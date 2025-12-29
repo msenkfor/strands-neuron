@@ -15,21 +15,38 @@ This package provides a model provider implementation that connects to vLLM serv
 
 ## Installation
 
+First, clone the repository and create a virtual environment:
+
 ```bash
-pip install strands-neuron
+git clone <repository-url>
+cd strands-neuron
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
-For development:
+Install the Strands Agents SDK:
 
 ```bash
-pip install strands-neuron[dev]
+pip install strands-agents strands-agents-tools
+```
+
+Then install the package from local source:
+
+```bash
+pip install -e .
+```
+
+For development (includes testing and linting tools):
+
+```bash
+pip install -e ".[dev]"
 ```
 
 ## Prerequisites
 
 ### Hardware Requirements
 
-- AWS EC2 instance with Neuron hardware (e.g., inf2.xlarge or larger)
+- AWS EC2 instance with Neuron hardware (e.g., inf2, trn1, trn2 or trn3)
 - AWS Neuron Deep Learning AMI (DLAMI) for Ubuntu 22.04
 
 See the [infrastructure README](infrastructure/README.md) for detailed setup instructions.
@@ -209,6 +226,7 @@ git clone <repository-url>
 cd strands-neuron
 
 # Install in development mode
+pip install strands-agents strands-agents-tools pytest
 pip install -e ".[dev]"
 ```
 
