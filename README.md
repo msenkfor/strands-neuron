@@ -1,8 +1,8 @@
 # strands-neuron
 
-AWS vLLM on Neuron infrastructure provider for [Strands Agents SDK](https://github.com/strands-ai/strands).
+vLLM on [AWS Neuron](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/libraries/nxd-inference/vllm/index.html#) infrastructure provider for [AWS Strands Agents SDK](https://github.com/strands-agents/sdk-python).
 
-This package provides a model provider implementation that connects to vLLM servers running on AWS Neuron hardware, enabling high-performance LLM inference with OpenAI-compatible APIs.
+This package provides a model provider implementation that connects to vLLM servers running on [AWS AI Chips](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/about-neuron/arch/neuron-hardware/trainium.html), enabling high-performance LLM inference with OpenAI-compatible APIs.
 
 ## Features
 
