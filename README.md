@@ -30,10 +30,10 @@ Install the Strands Agents SDK:
 pip install strands-agents strands-agents-tools
 ```
 
-Then install the package from local source:
+Then install the package:
 
 ```bash
-pip install -e .
+pip install strands-neuron
 ```
 
 For development (includes testing and linting tools):
