@@ -34,6 +34,13 @@ Customize with environment variables:
 MODEL="meta-llama/Llama-3.1-8B-Instruct" PORT=8080 . build.sh
 ```
 
+**Note on Tool Calling Support:**
+The Dockerfile is configured with `--tool-call-parser llama3_json` which is optimized for Llama 3.1+ models. If you're using a different model family, you may need to modify the Dockerfile to use the appropriate parser:
+- **Llama 3.1+**: `--tool-call-parser llama3_json` (default)
+- **Hermes models**: `--tool-call-parser hermes`
+- **Mistral models**: `--tool-call-parser mistral`
+- **Other models**: Check [vLLM documentation](https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html#tool-calling) for supported parsers
+
 ### 3. Run the server
 
 Use your `huggingface token` token for HF_TOKEN:

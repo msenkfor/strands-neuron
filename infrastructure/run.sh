@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Check if container with name vllm-server-strands is already running
+if docker ps -a --format '{{.Names}}' | grep -q '^vllm-server-strands$'; then
+    echo "Container vllm-server-strands already exists. Removing it..."
+    docker rm -f vllm-server-strands
+fi
+
 docker run -it \
     -e HF_TOKEN=$HF_TOKEN \
     --device=/dev/neuron0 \

@@ -2,6 +2,7 @@ import json
 import unittest.mock
 from typing import AsyncGenerator, List, TypeVar
 
+import httpx
 import pydantic
 import pytest
 
@@ -58,6 +59,14 @@ def model(model_id: str) -> NeuronModel:
 
 
 @pytest.fixture
+def model_with_stream_options(model_id: str) -> NeuronModel:
+    return NeuronModel({
+        "model_id": model_id,
+        "stream_options": {"include_usage": True}
+    })
+
+
+@pytest.fixture
 def messages() -> Messages:
     return [{"role": "user", "content": [{"text": "test"}]}]
 
@@ -77,12 +86,12 @@ def test_output_model_cls() -> type[pydantic.BaseModel]:
 
 
 def test__init__model_configs(model_id: str) -> None:
-    model = NeuronModel({"model_id": model_id, "max_tokens": 1})
+    model = NeuronModel({"model_id": model_id, "max_completion_tokens": 1})
 
-    tru_max_tokens = model.get_config().get("max_tokens")
-    exp_max_tokens = 1
+    tru_max_completion_tokens = model.get_config().get("max_completion_tokens")
+    exp_max_completion_tokens = 1
 
-    assert tru_max_tokens == exp_max_tokens
+    assert tru_max_completion_tokens == exp_max_completion_tokens
 
 
 def test_update_config(model: NeuronModel, model_id: str) -> None:
@@ -99,10 +108,6 @@ def test_format_request_default(model: NeuronModel, messages: Messages, model_id
     exp_request = {
         "messages": [{"role": "user", "content": "test"}],
         "model": model_id,
-        "temperature": None,
-        "top_p": None,
-        "max_tokens": None,
-        "stop": None,
         "stream": True,
     }
 
@@ -115,10 +120,6 @@ def test_format_request_with_override(model: NeuronModel, messages: Messages, mo
     exp_request = {
         "messages": [{"role": "user", "content": "test"}],
         "model": model_id,
-        "temperature": None,
-        "top_p": None,
-        "max_tokens": None,
-        "stop": None,
         "stream": True,
     }
 
@@ -135,10 +136,6 @@ def test_format_request_with_system_prompt(
             {"role": "user", "content": "test"},
         ],
         "model": model_id,
-        "temperature": None,
-        "top_p": None,
-        "max_tokens": None,
-        "stop": None,
         "stream": True,
     }
 
@@ -152,10 +149,6 @@ def test_format_request_with_image(model: NeuronModel, model_id: str) -> None:
     exp_request = {
         "messages": [{"role": "user", "images": ["base64encodedimage"]}],
         "model": model_id,
-        "temperature": None,
-        "top_p": None,
-        "max_tokens": None,
-        "stop": None,
         "stream": True,
     }
 
@@ -174,6 +167,8 @@ def test_format_request_with_tool_use(model: NeuronModel, model_id: str) -> None
                 "role": "assistant",
                 "tool_calls": [
                     {
+                        "id": "calculator",
+                        "type": "function",
                         "function": {
                             "name": "calculator",
                             "arguments": '{"expression": "2+2"}',
@@ -183,10 +178,6 @@ def test_format_request_with_tool_use(model: NeuronModel, model_id: str) -> None
             }
         ],
         "model": model_id,
-        "temperature": None,
-        "top_p": None,
-        "max_tokens": None,
-        "stop": None,
         "stream": True,
     }
 
@@ -221,15 +212,9 @@ def test_format_request_with_tool_result(model: NeuronModel, model_id: str) -> N
         "messages": [
             {
                 "role": "tool",
-                "content": "4",
-            },
-            {
-                "role": "tool",
+                "tool_call_id": "calculator",
+                "content": "4\n" + '["4"]',
                 "images": [b"image"],
-            },
-            {
-                "role": "tool",
-                "content": '["4"]',
             },
             {
                 "role": "user",
@@ -237,10 +222,6 @@ def test_format_request_with_tool_result(model: NeuronModel, model_id: str) -> N
             },
         ],
         "model": model_id,
-        "temperature": None,
-        "top_p": None,
-        "max_tokens": None,
-        "stop": None,
         "stream": True,
     }
 
@@ -274,20 +255,19 @@ def test_format_request_with_tool_specs(model: NeuronModel, messages: Messages, 
     exp_request = {
         "messages": [{"role": "user", "content": "test"}],
         "model": model_id,
-        "temperature": None,
-        "top_p": None,
-        "max_tokens": None,
-        "stop": None,
         "stream": True,
-        "functions": [
+        "tools": [
             {
-                "name": "calculator",
-                "description": "Calculate mathematical expressions",
-                "parameters": {
-                    "type": "object",
-                    "properties": {"expression": {"type": "string"}},
-                    "required": ["expression"],
-                },
+                "type": "function",
+                "function": {
+                    "name": "calculator",
+                    "description": "Calculate mathematical expressions",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"expression": {"type": "string"}},
+                        "required": ["expression"],
+                    },
+                }
             }
         ],
     }
@@ -297,7 +277,7 @@ def test_format_request_with_tool_specs(model: NeuronModel, messages: Messages, 
 
 def test_format_request_with_inference_config(model: NeuronModel, messages: Messages, model_id: str) -> None:
     inference_config = {
-        "max_tokens": 1,
+        "max_completion_tokens": 1,
         "stop_sequences": ["stop"],
         "temperature": 1.0,
         "top_p": 1.0,
@@ -310,7 +290,7 @@ def test_format_request_with_inference_config(model: NeuronModel, messages: Mess
         "model": model_id,
         "temperature": inference_config["temperature"],
         "top_p": inference_config["top_p"],
-        "max_tokens": inference_config["max_tokens"],
+        "max_completion_tokens": inference_config["max_completion_tokens"],
         "stop": inference_config["stop_sequences"],
         "stream": True,
     }
@@ -326,10 +306,6 @@ def test_format_request_with_additional_args(model: NeuronModel, messages: Messa
     exp_request = {
         "messages": [{"role": "user", "content": "test"}],
         "model": model_id,
-        "temperature": None,
-        "top_p": None,
-        "max_tokens": None,
-        "stop": None,
         "stream": True,
         "o1": 1,
     }
@@ -417,9 +393,40 @@ def test_format_chunk_message_stop_tool_use(model: NeuronModel) -> None:
 
 
 def test_format_chunk_metadata(model: NeuronModel) -> None:
+    # Test with usage data
+    mock_usage = unittest.mock.Mock()
+    mock_usage.prompt_tokens = 10
+    mock_usage.completion_tokens = 20
+    mock_usage.total_tokens = 30
+    
     event = {
         "chunk_type": "metadata",
-        "data": unittest.mock.Mock(),
+        "usage": mock_usage,
+        "latency_ms": 150,
+    }
+
+    tru_chunk = model.format_chunk(event)
+    exp_chunk = {
+        "metadata": {
+            "usage": {
+                "inputTokens": 10,
+                "outputTokens": 20,
+                "totalTokens": 30,
+            },
+            "metrics": {
+                "latencyMs": 150,
+            },
+        },
+    }
+
+    assert tru_chunk == exp_chunk
+
+
+def test_format_chunk_metadata_without_usage(model: NeuronModel) -> None:
+    # Test without usage data (defaults to 0)
+    event = {
+        "chunk_type": "metadata",
+        "latency_ms": 100,
     }
 
     tru_chunk = model.format_chunk(event)
@@ -431,7 +438,7 @@ def test_format_chunk_metadata(model: NeuronModel) -> None:
                 "totalTokens": 0,
             },
             "metrics": {
-                "latencyMs": 0,
+                "latencyMs": 100,
             },
         },
     }
@@ -449,10 +456,11 @@ def test_format_chunk_other(model: NeuronModel) -> None:
 @pytest.mark.asyncio
 async def test_stream(
     neuron_client: unittest.mock.Mock,
-    model: NeuronModel,
+    model_with_stream_options: NeuronModel,
     agenerator,
     alist,
 ) -> None:
+    model = model_with_stream_options
     mock_chunk = unittest.mock.Mock()
     mock_choice = unittest.mock.Mock()
     mock_delta = unittest.mock.Mock()
@@ -474,18 +482,26 @@ async def test_stream(
         {"contentBlockDelta": {"delta": {"text": "Hello"}}},
         {"contentBlockStop": {}},
         {"messageStop": {"stopReason": "end_turn"}},
+        {"metadata": {"usage": {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0}, "metrics": {"latencyMs": 0}}},
     ]
 
-    assert tru_events == exp_events
+    # Check structure (comparing exact latency is flaky due to timing)
+    assert len(tru_events) == len(exp_events)
+    assert tru_events[0] == exp_events[0]
+    assert tru_events[1] == exp_events[1]
+    assert tru_events[2] == exp_events[2]
+    assert tru_events[3] == exp_events[3]
+    assert tru_events[4] == exp_events[4]
+    # Check metadata structure exists
+    assert "metadata" in tru_events[5]
+    assert "usage" in tru_events[5]["metadata"]
+    assert "metrics" in tru_events[5]["metadata"]
 
     expected_request = {
         "messages": [{"role": "user", "content": "Hello"}],
         "model": "m1",
-        "temperature": None,
-        "top_p": None,
-        "max_tokens": None,
-        "stop": None,
         "stream": True,
+        "stream_options": {"include_usage": True},
     }
     neuron_client.chat.completions.create.assert_awaited_once_with(**expected_request)
 
@@ -493,42 +509,75 @@ async def test_stream(
 @pytest.mark.asyncio
 async def test_stream_with_tool_calls(
     neuron_client: unittest.mock.Mock,
-    model: NeuronModel,
+    model_with_stream_options: NeuronModel,
     agenerator,
     alist,
 ) -> None:
-    mock_chunk = unittest.mock.Mock()
-    mock_choice = unittest.mock.Mock()
-    mock_delta = unittest.mock.Mock()
+    model = model_with_stream_options
+    # Simulate OpenAI's incremental tool call streaming
+    # Chunk 1: Text content
+    chunk1 = unittest.mock.Mock()
+    choice1 = unittest.mock.Mock()
+    delta1 = unittest.mock.Mock()
+    delta1.content = "I'll calculate that for you"
+    delta1.tool_calls = None
+    choice1.delta = delta1
+    choice1.finish_reason = None
+    chunk1.choices = [choice1]
+    chunk1.usage = None
+    
+    # Chunk 2: Tool call start (with name)
+    chunk2 = unittest.mock.Mock()
+    choice2 = unittest.mock.Mock()
+    delta2 = unittest.mock.Mock()
+    tool_call_start = unittest.mock.Mock()
+    tool_call_start.index = 0
+    tool_call_start.id = "call_123"
+    tool_call_start.type = "function"
+    tool_call_start.function = unittest.mock.Mock()
+    tool_call_start.function.name = "calculator"
+    tool_call_start.function.arguments = None
+    delta2.content = None
+    delta2.tool_calls = [tool_call_start]
+    choice2.delta = delta2
+    choice2.finish_reason = None
+    chunk2.choices = [choice2]
+    chunk2.usage = None
+    
+    # Chunk 3: Tool call arguments
+    chunk3 = unittest.mock.Mock()
+    choice3 = unittest.mock.Mock()
+    delta3 = unittest.mock.Mock()
+    tool_call_args = unittest.mock.Mock()
+    tool_call_args.index = 0
+    tool_call_args.function = unittest.mock.Mock()
+    tool_call_args.function.name = None
+    tool_call_args.function.arguments = '{"expression": "2+2"}'
+    delta3.content = None
+    delta3.tool_calls = [tool_call_args]
+    choice3.delta = delta3
+    choice3.finish_reason = "tool_calls"
+    chunk3.choices = [choice3]
+    chunk3.usage = None
 
-    mock_tool_call = unittest.mock.Mock()
-    mock_tool_call.function.name = "calculator"
-    mock_tool_call.function.arguments = {"expression": "2+2"}
-
-    mock_delta.content = "I'll calculate that for you"
-    mock_delta.tool_calls = [mock_tool_call]
-    mock_choice.delta = mock_delta
-    mock_choice.finish_reason = "stop"
-    mock_chunk.choices = [mock_choice]
-
-    neuron_client.chat.completions.create.return_value = agenerator([mock_chunk])
+    neuron_client.chat.completions.create.return_value = agenerator([chunk1, chunk2, chunk3])
 
     messages: Messages = [{"role": "user", "content": [{"text": "Calculate 2+2"}]}]
     response = model.stream(messages)
 
     tru_events = await alist(response)
 
-    # Basic structural checks: first start, last stop
+    # Basic structural checks
     assert tru_events[0] == {"messageStart": {"role": "assistant"}}
     assert tru_events[1] == {"contentBlockStart": {"start": {}}}
-    assert tru_events[-1] == {"messageStop": {"stopReason": "tool_use"}}
+    assert tru_events[-2]["messageStop"]["stopReason"] == "tool_use"
 
     # One toolUse start with expected name/id
     tool_starts = [e for e in tru_events if e.get("contentBlockStart", {}).get("start", {}).get("toolUse") is not None]
     assert len(tool_starts) == 1
     tool_use = tool_starts[0]["contentBlockStart"]["start"]["toolUse"]
     assert tool_use["name"] == "calculator"
-    assert tool_use["toolUseId"] == "calculator"
+    assert tool_use["toolUseId"] == "call_123"
 
     # One toolUse delta with expected input
     tool_deltas = [e for e in tru_events if "contentBlockDelta" in e and "toolUse" in e["contentBlockDelta"]["delta"]]
@@ -543,11 +592,8 @@ async def test_stream_with_tool_calls(
     expected_request = {
         "messages": [{"role": "user", "content": "Calculate 2+2"}],
         "model": "m1",
-        "temperature": None,
-        "top_p": None,
-        "max_tokens": None,
-        "stop": None,
         "stream": True,
+        "stream_options": {"include_usage": True},
     }
     neuron_client.chat.completions.create.assert_awaited_once_with(**expected_request)
 
@@ -558,23 +604,218 @@ async def test_structured_output(
     model: NeuronModel,
     test_output_model_cls: type[pydantic.BaseModel],
     alist,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     messages: Messages = [{"role": "user", "content": [{"text": "Generate a person"}]}]
 
-    mock_response = unittest.mock.Mock()
+    # Mock the tool call response
     mock_tool_call = unittest.mock.Mock()
+    mock_tool_call.function.name = test_output_model_cls.__name__
     mock_tool_call.function.arguments = '{"name": "John", "age": 30}'
+    
     mock_message = unittest.mock.Mock()
     mock_message.tool_calls = [mock_tool_call]
+    
     mock_choice = unittest.mock.Mock()
     mock_choice.message = mock_message
+    
+    mock_response = unittest.mock.Mock()
     mock_response.choices = [mock_choice]
-
-    neuron_client.chat.completions.create = unittest.mock.AsyncMock(return_value=mock_response)
+    
+    # Mock the chat.completions.create call
+    neuron_client.chat.completions.create.return_value = mock_response
 
     stream = model.structured_output(test_output_model_cls, messages)
     events = await alist(stream)
 
-    tru_result = events[-1]
+    # Should have only the output event
+    assert len(events) == 1
+    tru_result = events[0]
     exp_result = {"output": test_output_model_cls(name="John", age=30)}
     assert tru_result == exp_result
+    
+    # Verify the request was made correctly
+    call_kwargs = neuron_client.chat.completions.create.call_args.kwargs
+    assert call_kwargs["model"] == "m1"
+    assert call_kwargs["stream"] is False
+    assert "tools" in call_kwargs
+    assert call_kwargs["tool_choice"]["type"] == "function"
+    assert call_kwargs["tool_choice"]["function"]["name"] == test_output_model_cls.__name__
+
+
+# Server availability check tests
+
+
+def test_check_server_availability_success(monkeypatch: pytest.MonkeyPatch, model_id: str) -> None:
+    """Test successful connection to OpenAI API server."""
+    mock_response = unittest.mock.Mock()
+    mock_response.status_code = 200
+    
+    mock_client = unittest.mock.MagicMock()
+    mock_client.__enter__.return_value.get.return_value = mock_response
+    
+    mock_client_cls = unittest.mock.Mock(return_value=mock_client)
+    monkeypatch.setattr("httpx.Client", mock_client_cls)
+    
+    model = NeuronModel({"model_id": model_id, "base_url": "http://localhost:8080/v1"})
+    
+    # Verify the client was called with correct URL
+    mock_client.__enter__.return_value.get.assert_called_once_with("http://localhost:8080/v1/models")
+
+
+def test_check_server_availability_connection_error(
+    monkeypatch: pytest.MonkeyPatch, model_id: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test graceful handling of connection error."""
+    mock_client = unittest.mock.MagicMock()
+    mock_client.__enter__.return_value.get.side_effect = httpx.ConnectError("Connection refused")
+    
+    mock_client_cls = unittest.mock.Mock(return_value=mock_client)
+    monkeypatch.setattr("httpx.Client", mock_client_cls)
+    
+    # Should not raise an exception
+    model = NeuronModel({"model_id": model_id, "base_url": "http://localhost:8080/v1"})
+    
+    assert model is not None
+    assert "Could not connect to OpenAI API server" in caplog.text
+
+
+def test_check_server_availability_timeout(
+    monkeypatch: pytest.MonkeyPatch, model_id: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test graceful handling of timeout."""
+    mock_client = unittest.mock.MagicMock()
+    mock_client.__enter__.return_value.get.side_effect = httpx.TimeoutException("Request timeout")
+    
+    mock_client_cls = unittest.mock.Mock(return_value=mock_client)
+    monkeypatch.setattr("httpx.Client", mock_client_cls)
+    
+    # Should not raise an exception
+    model = NeuronModel({"model_id": model_id, "base_url": "http://localhost:8080/v1"})
+    
+    assert model is not None
+    assert "timed out" in caplog.text
+
+
+def test_check_server_availability_non_200_status(
+    monkeypatch: pytest.MonkeyPatch, model_id: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test handling of non-200 status code."""
+    mock_response = unittest.mock.Mock()
+    mock_response.status_code = 404
+    
+    mock_client = unittest.mock.MagicMock()
+    mock_client.__enter__.return_value.get.return_value = mock_response
+    
+    mock_client_cls = unittest.mock.Mock(return_value=mock_client)
+    monkeypatch.setattr("httpx.Client", mock_client_cls)
+    
+    model = NeuronModel({"model_id": model_id, "base_url": "http://localhost:8080/v1"})
+    
+    assert model is not None
+    assert "returned status 404" in caplog.text
+
+
+def test_check_server_availability_generic_exception(
+    monkeypatch: pytest.MonkeyPatch, model_id: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test handling of generic exception."""
+    mock_client = unittest.mock.MagicMock()
+    mock_client.__enter__.return_value.get.side_effect = Exception("Something went wrong")
+    
+    mock_client_cls = unittest.mock.Mock(return_value=mock_client)
+    monkeypatch.setattr("httpx.Client", mock_client_cls)
+    
+    # Should not raise an exception
+    model = NeuronModel({"model_id": model_id, "base_url": "http://localhost:8080/v1"})
+    
+    assert model is not None
+    assert "Error checking OpenAI API server" in caplog.text
+
+
+def test_init_without_base_url(monkeypatch: pytest.MonkeyPatch, model_id: str) -> None:
+    """Test that server check is not performed when base_url is not provided."""
+    mock_client_cls = unittest.mock.Mock()
+    monkeypatch.setattr("httpx.Client", mock_client_cls)
+    
+    model = NeuronModel({"model_id": model_id})
+    
+    # Verify httpx.Client was never called
+    mock_client_cls.assert_not_called()
+    assert model is not None
+
+
+def test_update_config_with_base_url_success(
+    monkeypatch: pytest.MonkeyPatch, model_id: str
+) -> None:
+    """Test that server check is performed when updating base_url."""
+    mock_response = unittest.mock.Mock()
+    mock_response.status_code = 200
+    
+    mock_client = unittest.mock.MagicMock()
+    mock_client.__enter__.return_value.get.return_value = mock_response
+    
+    mock_client_cls = unittest.mock.Mock(return_value=mock_client)
+    monkeypatch.setattr("httpx.Client", mock_client_cls)
+    
+    # Create model without base_url
+    model = NeuronModel({"model_id": model_id})
+    mock_client_cls.reset_mock()
+    
+    # Update config with base_url
+    model.update_config(base_url="http://localhost:8080/v1")
+    
+    # Verify the server check was performed
+    mock_client_cls.assert_called_once()
+    mock_client.__enter__.return_value.get.assert_called_once_with("http://localhost:8080/v1/models")
+
+
+def test_update_config_with_base_url_connection_error(
+    monkeypatch: pytest.MonkeyPatch, model_id: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test graceful handling when updating base_url with connection error."""
+    mock_client = unittest.mock.MagicMock()
+    mock_client.__enter__.return_value.get.side_effect = httpx.ConnectError("Connection refused")
+    
+    mock_client_cls = unittest.mock.Mock(return_value=mock_client)
+    monkeypatch.setattr("httpx.Client", mock_client_cls)
+    
+    model = NeuronModel({"model_id": model_id})
+    caplog.clear()
+    
+    # Should not raise an exception
+    model.update_config(base_url="http://localhost:8080/v1")
+    
+    assert "Could not connect to OpenAI API server" in caplog.text
+    assert model.get_config()["base_url"] == "http://localhost:8080/v1"
+
+
+def test_update_config_without_base_url(monkeypatch: pytest.MonkeyPatch, model: NeuronModel) -> None:
+    """Test that server check is not performed when updating other config parameters."""
+    mock_client_cls = unittest.mock.Mock()
+    monkeypatch.setattr("httpx.Client", mock_client_cls)
+    
+    model.update_config(temperature=0.7, max_completion_tokens=100)
+    
+    # Verify httpx.Client was never called
+    mock_client_cls.assert_not_called()
+
+
+def test_check_server_availability_url_formatting(
+    monkeypatch: pytest.MonkeyPatch, model_id: str
+) -> None:
+    """Test that trailing slashes in base URL are handled correctly."""
+    mock_response = unittest.mock.Mock()
+    mock_response.status_code = 200
+    
+    mock_client = unittest.mock.MagicMock()
+    mock_client.__enter__.return_value.get.return_value = mock_response
+    
+    mock_client_cls = unittest.mock.Mock(return_value=mock_client)
+    monkeypatch.setattr("httpx.Client", mock_client_cls)
+    
+    # Test with trailing slash
+    model = NeuronModel({"model_id": model_id, "base_url": "http://localhost:8080/v1/"})
+    
+    # Verify the URL is correctly formatted without double slashes
+    mock_client.__enter__.return_value.get.assert_called_once_with("http://localhost:8080/v1/models")
