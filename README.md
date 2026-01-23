@@ -15,6 +15,21 @@ This package provides a model provider implementation that connects to vLLM serv
 - ⚡ **Neuron-optimized** - Designed for AWS Neuron hardware acceleration
 - 🔧 **Flexible configuration** - Extensive configuration options for model behavior
 
+### ⚠️ Parallel Tool Calling Support
+
+Tool calling support depends on the underlying model:
+
+- **Llama 3.1 models**: Only support single tool calls at once (e.g., `meta-llama/Llama-3.1-8B-Instruct`)
+- **Llama 4 models**: Support parallel tool calls
+- **Other models with parallel support**: Granite 3.1, xLAM, Pythonic parser models
+
+If you encounter `"This model only supports single tool-calls at once!"` errors, this is a **model limitation**, not a configuration issue. The vLLM server is correctly configured with `--enable-auto-tool-choice` and `--tool-call-parser` flags in the Dockerfile.
+
+**Workarounds:**
+1. Use a model that supports parallel tool calls (e.g., Llama 4, Granite 3.1, xLAM)
+2. Design agents to only use one tool at a time
+3. Use `structured_output()` which only requires a single tool call (works perfectly with Llama 3.1)
+
 ## Installation
 
 First, clone the repository and create a virtual environment:

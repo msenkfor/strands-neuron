@@ -12,11 +12,13 @@ class PersonInfo(BaseModel):
 
 
 # Initialize the model
+# Note: streaming=False is a workaround for vLLM streaming bugs with Mistral tool calls
 model = NeuronModel(
     config={
-        "model_id": "meta-llama/Llama-3.1-8B-Instruct",
+        "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
         "base_url": "http://localhost:8080/v1",
         "api_key": "EMPTY",
+        "streaming": False,  # Disable streaming to avoid vLLM tool call parsing bugs
     }
 )
 

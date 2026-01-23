@@ -10,7 +10,7 @@ from strands_neuron import NeuronModel
 @pytest.fixture
 def model() -> NeuronModel:
     base_url = os.getenv("OPENAI_API_BASE_URL", "http://localhost:8080/v1")
-    model_id = os.getenv("NEURON_VLLM_MODEL_ID", "meta-llama/Llama-3.1-8B-Instruct")
+    model_id = os.getenv("NEURON_VLLM_MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.3")
     api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
 
     return NeuronModel(
@@ -119,7 +119,9 @@ async def test_agent_stream_async(agent):
 
 def test_agent_structured_output(agent, weather):
     """Test synchronous structured output."""
-    tru_weather = agent.structured_output(type(weather), "The time is 12:00 and the weather is sunny")
+    tru_weather = agent.structured_output(
+        type(weather), "The time is 12:00 and the weather is sunny"
+    )
     exp_weather = weather
     assert tru_weather == exp_weather
 
