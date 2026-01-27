@@ -1,26 +1,76 @@
 #!/bin/bash
 
+# Run vLLM Neuron Server
+# Usage:
+#   ./run.sh                              # Use default config
+#   ./run.sh configs/tool-calling.env     # Use specific config profile
+#   CONFIG_FILE=my-config.env ./run.sh    # Set via environment variable
+#   IMAGE_NAME=my-image ./run.sh          # Use custom image name
+#   CONTAINER_NAME=my-container ./run.sh  # Use custom container name
+#   PORT=8081 ./run.sh                    # Override port mapping
+
+set -e
+
+# Configuration file (optional - first argument or CONFIG_FILE env var)
+CONFIG_FILE="${1:-${CONFIG_FILE:-}}"
+
+# Image and container names (can be overridden)
+IMAGE_NAME="${IMAGE_NAME:-vllm-server-strands}"
+CONTAINER_NAME="${CONTAINER_NAME:-vllm-server-strands}"
+
+# Port mapping (default 8080, can be overridden)
+PORT="${PORT:-8080}"
+
+# Check if HF_TOKEN is set
+if [ -z "$HF_TOKEN" ]; then
+    echo "Warning: HF_TOKEN not set. You may need it for private models."
+    echo "   Set it with: export HF_TOKEN=<your-token>"
+fi
+
+# Check if container already exists
+if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+    echo "Container ${CONTAINER_NAME} already exists. Removing it..."
+    docker rm -f "${CONTAINER_NAME}"
+fi
+
+# Build device flags for existing neuron devices
+DEVICE_FLAGS=""
+for i in {0..15}; do
+    if [ -e "/dev/neuron${i}" ]; then
+        DEVICE_FLAGS="${DEVICE_FLAGS} --device=/dev/neuron${i}"
+    fi
+done
+
+# Handle config file
+ENV_FILE_FLAG=""
+if [ -n "$CONFIG_FILE" ] && [ -f "$CONFIG_FILE" ]; then
+    echo "Using configuration file: $CONFIG_FILE"
+    ENV_FILE_FLAG="--env-file $CONFIG_FILE"
+
+    # Extract PORT from config file if present (for port mapping)
+    CONFIG_PORT=$(grep -E "^PORT=" "$CONFIG_FILE" 2>/dev/null | cut -d'=' -f2 || true)
+    if [ -n "$CONFIG_PORT" ]; then
+        PORT="$CONFIG_PORT"
+    fi
+else
+    echo "Using default configuration"
+fi
+
+echo "=================================="
+echo "Starting vLLM Neuron Server"
+echo "=================================="
+echo "Image: ${IMAGE_NAME}"
+echo "Container: ${CONTAINER_NAME}"
+echo "Port: ${PORT}"
+echo "=================================="
+
 docker run -it \
     -e HF_TOKEN=$HF_TOKEN \
-    --device=/dev/neuron0 \
-    --device=/dev/neuron1 \
-    --device=/dev/neuron2 \
-    --device=/dev/neuron3 \
-    --device=/dev/neuron4 \
-    --device=/dev/neuron5 \
-    --device=/dev/neuron6 \
-    --device=/dev/neuron7 \
-    --device=/dev/neuron8 \
-    --device=/dev/neuron9 \
-    --device=/dev/neuron10 \
-    --device=/dev/neuron11 \
-    --device=/dev/neuron12 \
-    --device=/dev/neuron13 \
-    --device=/dev/neuron14 \
-    --device=/dev/neuron15 \
+    ${ENV_FILE_FLAG} \
+    ${DEVICE_FLAGS} \
     --cap-add SYS_ADMIN \
     --cap-add IPC_LOCK \
-    -p 8080:8080 \
-    --name vllm-server-strands \
-    vllm-server-strands
+    -p ${PORT}:${PORT} \
+    --name ${CONTAINER_NAME} \
+    ${IMAGE_NAME}
 

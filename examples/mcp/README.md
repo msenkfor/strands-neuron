@@ -59,14 +59,14 @@ def create_streamable_http_transport():
 
 ### vLLM Server URL
 
-The default vLLM server URL is `http://localhost:8080/v1`. To change it, modify the `openai_api_base` in the NeuronModel config:
+The default vLLM server URL is `http://localhost:8080/v1`. To change it, modify the `base_url` in the NeuronModel config:
 
 ```python
 model = NeuronModel(
     config={
         "model_id": "meta-llama/Llama-3.1-8B-Instruct",
-        "openai_api_base": "http://your-server:port/v1",
-        "openai_api_key": "EMPTY",
+        "base_url": "http://your-server:port/v1",
+        "api_key": "EMPTY",
     }
 )
 ```

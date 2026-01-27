@@ -15,6 +15,21 @@ This package provides a model provider implementation that connects to vLLM serv
 - ⚡ **Neuron-optimized** - Designed for AWS Neuron hardware acceleration
 - 🔧 **Flexible configuration** - Extensive configuration options for model behavior
 
+### ⚠️ Parallel Tool Calling Support
+
+Tool calling support depends on the underlying model:
+
+- **Llama 3.1 models**: Only support single tool calls at once (e.g., `meta-llama/Llama-3.1-8B-Instruct`)
+- **Llama 4 models**: Support parallel tool calls
+- **Other models with parallel support**: Granite 3.1, xLAM, Pythonic parser models
+
+If you encounter `"This model only supports single tool-calls at once!"` errors, this is a **model limitation**, not a configuration issue. The vLLM server is correctly configured with `--enable-auto-tool-choice` and `--tool-call-parser` flags in the Dockerfile.
+
+**Workarounds:**
+1. Use a model that supports parallel tool calls (e.g., Llama 4, Granite 3.1, xLAM)
+2. Design agents to only use one tool at a time
+3. Use `structured_output()` which only requires a single tool call (works perfectly with Llama 3.1)
+
 ## Installation
 
 First, clone the repository and create a virtual environment:
@@ -76,8 +91,9 @@ from strands_neuron import NeuronModel
 model = NeuronModel(
     config={
         "model_id": "meta-llama/Llama-3.1-8B-Instruct",
-        "openai_api_base": "http://localhost:8080/v1",
-        "openai_api_key": "EMPTY",  # Not required for local servers
+        "base_url": "http://localhost:8080/v1",
+        "api_key": "EMPTY",  # Not required for local servers
+        # "support_tool_choice_auto": True,  # Uncomment if vLLM has --enable-auto-tool-choice flag
     }
 )
 
@@ -102,8 +118,8 @@ async def stream_example():
     model = NeuronModel(
         config={
             "model_id": "meta-llama/Llama-3.1-8B-Instruct",
-            "openai_api_base": "http://localhost:8080/v1",
-            "openai_api_key": "EMPTY",
+            "base_url": "http://localhost:8080/v1",
+            "api_key": "EMPTY",
         }
     )
     
@@ -130,27 +146,27 @@ The `NeuronModel` accepts a configuration dictionary with the following options:
 
 #### API Configuration
 
-- `openai_api_base` (str): Base URL for the OpenAI-compatible API (default: `"http://localhost:8080/v1"`)
-- `openai_api_key` (str): API key for authentication (default: `"EMPTY"`)
+- `base_url` (str): Base URL for the OpenAI-compatible API (default: `"http://localhost:8080/v1"`)
+- `api_key` (str): API key for authentication (default: `"EMPTY"`)
 
 #### Generation Parameters
 
 - `temperature` (float): Sampling temperature (0.0 to 2.0)
 - `top_p` (float): Nucleus sampling parameter
-- `max_tokens` (int): Maximum tokens to generate
-- `stop_sequences` (List[str]): Sequences that stop generation
+- `max_completion_tokens` (int): Maximum tokens to generate
+- `stop` (str | List[str]): Sequences that stop generation
+- `stop_sequences` (List[str]): Alternative to `stop` for backwards compatibility
+- `frequency_penalty` (float): Penalize tokens based on frequency (-2.0 to 2.0)
+- `presence_penalty` (float): Penalize tokens based on presence (-2.0 to 2.0)
+- `n` (int): Number of completions to generate
+- `logprobs` (bool): Return log probabilities
+- `top_logprobs` (int): Number of top log probabilities to return
 
-#### Neuron-Specific Settings
+#### vLLM Server Capabilities
 
-- `max_model_len` (int): Maximum model length
-- `max_num_seqs` (int): Maximum number of sequences
-- `tensor_parallel_size` (int): Tensor parallel size
-- `block_size` (int): Block size for attention
-- `enable_prefix_caching` (bool): Enable prefix caching
-- `neuron_config` (Dict[str, Any]): Additional Neuron configuration
-- `device` (str): Device specification
+- `support_tool_choice_auto` (bool): Set to `True` if your vLLM server has `--enable-auto-tool-choice` and `--tool-call-parser` flags enabled (default: `False`)
 
-#### Additional Options
+#### Advanced Options
 
 - `additional_args` (Dict[str, Any]): Additional arguments passed to the API request
 
@@ -160,8 +176,8 @@ The `NeuronModel` accepts a configuration dictionary with the following options:
 model = NeuronModel(
     config={
         "model_id": "meta-llama/Llama-3.1-8B-Instruct",
-        "openai_api_base": "http://localhost:8080/v1",
-        "openai_api_key": "EMPTY",
+        "base_url": "http://localhost:8080/v1",
+        "api_key": "EMPTY",
         "temperature": 0.7,
         "top_p": 0.9,
         "max_tokens": 1000,
@@ -175,6 +191,14 @@ model = NeuronModel(
 ## Examples
 
 This package includes several example implementations:
+
+### Person Info Example (Structured Output)
+
+Demonstrates structured output extraction using Pydantic models:
+
+```bash
+python examples/person_example.py
+```
 
 ### Weather Agent Example
 

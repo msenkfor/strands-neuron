@@ -10,14 +10,14 @@ from strands_neuron import NeuronModel
 @pytest.fixture
 def model() -> NeuronModel:
     base_url = os.getenv("OPENAI_API_BASE_URL", "http://localhost:8080/v1")
-    model_id = os.getenv("NEURON_VLLM_MODEL_ID", "meta-llama/Llama-3.1-8B-Instruct")
+    model_id = os.getenv("NEURON_VLLM_MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.3")
     api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
 
     return NeuronModel(
         {
             "model_id": model_id,
-            "openai_api_base": base_url,
-            "openai_api_key": api_key,
+            "base_url": base_url,
+            "api_key": api_key,
         }
     )
 
@@ -117,20 +117,18 @@ async def test_agent_stream_async(agent):
         assert len(text) > 0
 
 
-@pytest.mark.xfail(
-    reason="Known issue: structured_output requires 'tools' instead of 'functions' when tool_choice is set"
-)
 def test_agent_structured_output(agent, weather):
-    tru_weather = agent.structured_output(type(weather), "The time is 12:00 and the weather is sunny")
+    """Test synchronous structured output."""
+    tru_weather = agent.structured_output(
+        type(weather), "The time is 12:00 and the weather is sunny"
+    )
     exp_weather = weather
     assert tru_weather == exp_weather
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    reason="Known issue: structured_output requires 'tools' instead of 'functions' when tool_choice is set"
-)
 async def test_agent_structured_output_async(agent, weather):
+    """Test asynchronous structured output."""
     tru_weather = await agent.structured_output_async(
         type(weather),
         "The time is 12:00 and the weather is sunny",

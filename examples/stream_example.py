@@ -14,10 +14,12 @@ async def stream_with_system_prompt():
     
     model = NeuronModel(
         config={
-            "model_id": "meta-llama/Llama-3.1-8B-Instruct",
-            "openai_api_base": "http://localhost:8080/v1",
-            "openai_api_key": "EMPTY",
-            "temperature": 0.5,
+            "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+            "base_url": "http://localhost:8080/v1",
+            "api_key": "EMPTY",
+            "params": {
+                "temperature": 0.5,
+            }
         }
     )
     
@@ -43,9 +45,9 @@ async def stream_simple():
     
     model = NeuronModel(
         config={
-            "model_id": "meta-llama/Llama-3.1-8B-Instruct",
-            "openai_api_base": "http://localhost:8080/v1",
-            "openai_api_key": "EMPTY",
+            "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+            "base_url": "http://localhost:8080/v1",
+            "api_key": "EMPTY",
         }
     )
     
@@ -65,9 +67,9 @@ async def stream_with_conversation():
     
     model = NeuronModel(
         config={
-            "model_id": "meta-llama/Llama-3.1-8B-Instruct",
-            "openai_api_base": "http://localhost:8080/v1",
-            "openai_api_key": "EMPTY",
+            "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+            "base_url": "http://localhost:8080/v1",
+            "api_key": "EMPTY",
         }
     )
     

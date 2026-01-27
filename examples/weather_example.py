@@ -24,9 +24,9 @@ Always explain the weather conditions clearly and provide context for the foreca
 
 model = NeuronModel(
     config={
-        "model_id": "meta-llama/Llama-3.1-8B-Instruct",
-        "openai_api_base": "http://localhost:8080/v1",
-        "openai_api_key": "EMPTY",
+        "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+        "base_url": "http://localhost:8080/v1",
+        "api_key": "EMPTY",
     }
 )
 
