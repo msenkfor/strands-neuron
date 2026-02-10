@@ -42,7 +42,7 @@ class NeuronModel(Model):
         """Configuration for NeuronModel.
 
         Attributes:
-            model_id: Model ID to use (e.g., "meta-llama/Llama-3.1-8B-Instruct").
+            model_id: Model ID to use (e.g., "mistralai/Mistral-7B-Instruct-v0.3").
             base_url: Base URL for the vLLM server (default: "http://localhost:8080/v1").
             api_key: API key for authentication (default: "EMPTY" for local vLLM).
             params: Additional model parameters (e.g., temperature, max_tokens).

@@ -8,7 +8,7 @@ RUN chmod +x /app/start-vllm.sh
 RUN mkdir -p /app/configs
 
 # Build arguments for baking defaults into the image
-ARG MODEL="meta-llama/Llama-3.1-8B-Instruct"
+ARG MODEL="mistralai/Mistral-7B-Instruct-v0.3"
 ARG PORT="8080"
 ARG MAX_NUM_SEQS="4"
 ARG MAX_MODEL_LEN="1024"

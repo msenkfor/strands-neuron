@@ -119,7 +119,7 @@ The following values can be baked into the image at build time:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MODEL` | `meta-llama/Llama-3.1-8B-Instruct` | Model ID from HuggingFace |
+| `MODEL` | `mistralai/Mistral-7B-Instruct-v0.3` | Model ID from HuggingFace |
 | `PORT` | `8080` | Server port |
 | `MAX_NUM_SEQS` | `4` | Maximum concurrent sequences |
 | `MAX_MODEL_LEN` | `2048` | Maximum sequence length |
@@ -137,7 +137,7 @@ These can be passed at runtime via `--env-file` or `-e` flags:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MODEL` | `meta-llama/Llama-3.1-8B-Instruct` | Model ID from HuggingFace |
+| `MODEL` | `mistralai/Mistral-7B-Instruct-v0.3` | Model ID from HuggingFace |
 | `PORT` | `8080` | Server port |
 | `MAX_NUM_SEQS` | `4` | Maximum concurrent sequences (batch size) |
 | `MAX_MODEL_LEN` | `1024` | Maximum sequence length |

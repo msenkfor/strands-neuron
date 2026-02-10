@@ -64,7 +64,7 @@ The default vLLM server URL is `http://localhost:8080/v1`. To change it, modify 
 ```python
 model = NeuronModel(
     config={
-        "model_id": "meta-llama/Llama-3.1-8B-Instruct",
+        "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
         "base_url": "http://your-server:port/v1",
         "api_key": "EMPTY",
     }

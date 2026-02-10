@@ -25,7 +25,7 @@ if [ -n "$CONFIG_FILE" ] && [ -f "$CONFIG_FILE" ]; then
 fi
 
 # Default values (can be overridden via config file or environment variables)
-MODEL="${MODEL:-meta-llama/Llama-3.1-8B-Instruct}"
+MODEL="${MODEL:-mistralai/Mistral-7B-Instruct-v0.3}"
 PORT="${PORT:-8080}"
 MAX_NUM_SEQS="${MAX_NUM_SEQS:-4}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-2048}"

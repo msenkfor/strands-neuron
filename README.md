@@ -19,7 +19,7 @@ This package provides a model provider implementation that connects to vLLM serv
 
 Tool calling support depends on the underlying model:
 
-- **Llama 3.1 models**: Only support single tool calls at once (e.g., `meta-llama/Llama-3.1-8B-Instruct`)
+- **Llama 3.1 models**: Only support single tool calls at once (e.g., `mistralai/Mistral-7B-Instruct-v0.3`)
 - **Llama 4 models**: Support parallel tool calls
 - **Other models with parallel support**: Granite 3.1, xLAM, Pythonic parser models
 
@@ -90,7 +90,7 @@ from strands_neuron import NeuronModel
 # Initialize the model
 model = NeuronModel(
     config={
-        "model_id": "meta-llama/Llama-3.1-8B-Instruct",
+        "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
         "base_url": "http://localhost:8080/v1",
         "api_key": "EMPTY",  # Not required for local servers
         # "support_tool_choice_auto": True,  # Uncomment if vLLM has --enable-auto-tool-choice flag
@@ -117,7 +117,7 @@ from strands_neuron import NeuronModel
 async def stream_example():
     model = NeuronModel(
         config={
-            "model_id": "meta-llama/Llama-3.1-8B-Instruct",
+            "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
             "base_url": "http://localhost:8080/v1",
             "api_key": "EMPTY",
         }
@@ -140,7 +140,7 @@ The `NeuronModel` accepts a configuration dictionary with the following options:
 
 ### Required
 
-- `model_id` (str): The model identifier (e.g., `"meta-llama/Llama-3.1-8B-Instruct"`)
+- `model_id` (str): The model identifier (e.g., `"mistralai/Mistral-7B-Instruct-v0.3"`)
 
 ### Optional
 
@@ -175,7 +175,7 @@ The `NeuronModel` accepts a configuration dictionary with the following options:
 ```python
 model = NeuronModel(
     config={
-        "model_id": "meta-llama/Llama-3.1-8B-Instruct",
+        "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
         "base_url": "http://localhost:8080/v1",
         "api_key": "EMPTY",
         "temperature": 0.7,
