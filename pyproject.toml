@@ -4,12 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "strands-neuron"
-version = "0.1.2"
+version = "0.1.3"
 description = "AWS vLLM on Neuron infrastructure provider for Strands Agents SDK"
 requires-python = ">=3.10"
+readme = "README.md" 
 license = {text = "Apache-2.0"}
 authors = [
-    {name = "Strands"}
+    {name = "Marisa Senkfor", email = "msenkfor@gmail.com"}
 ]
 keywords = ["ai", "llm", "neuron", "aws", "vllm", "strands"]
 classifiers = [
