@@ -2,6 +2,8 @@
 
 <img src="images/strands-trn3-s.jpeg" alt="strands-neuron" width="300">
 
+[![PyPI version](https://img.shields.io/pypi/v/strands-neuron.svg)](https://pypi.org/project/strands-neuron/)
+
 vLLM on [AWS Neuron](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/libraries/nxd-inference/vllm/index.html#) infrastructure provider for [AWS Strands Agents SDK](https://github.com/strands-agents/sdk-python).
 
 This package provides a model provider implementation that connects to vLLM servers running on [AWS AI Chips](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/about-neuron/arch/neuron-hardware/trainium.html), enabling high-performance LLM inference with OpenAI-compatible APIs.
