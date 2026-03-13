@@ -51,16 +51,16 @@ TOOL_CALL_PARSER="${TOOL_CALL_PARSER:-llama3_json}"
 ENABLE_PREFIX_CACHING="${ENABLE_PREFIX_CACHING:-false}"
 
 # =============================================================================
-# Advanced Configuration (--additional-config)
+# Neuron Config Override (--override-neuron-config)
 # =============================================================================
-# Neuron config overrides (JSON format)
-# Example: '{"override_neuron_config":{"enable_bucketing":false}}'
-ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG:-}"
+# Neuron-specific config overrides (JSON format)
+# Example: '{"enable_bucketing": false}'
+OVERRIDE_NEURON_CONFIG="${OVERRIDE_NEURON_CONFIG:-}"
 # Strip surrounding quotes if present (handles docker --env-file including literal quotes)
-ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG#\'}"
-ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG%\'}"
-ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG#\"}"
-ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG%\"}"
+OVERRIDE_NEURON_CONFIG="${OVERRIDE_NEURON_CONFIG#\'}"
+OVERRIDE_NEURON_CONFIG="${OVERRIDE_NEURON_CONFIG%\'}"
+OVERRIDE_NEURON_CONFIG="${OVERRIDE_NEURON_CONFIG#\"}"
+OVERRIDE_NEURON_CONFIG="${OVERRIDE_NEURON_CONFIG%\"}"
 
 # =============================================================================
 # Speculative Decoding (--speculative-config)
@@ -83,6 +83,7 @@ KV_CONNECTOR="${KV_CONNECTOR:-NeuronConnector}"
 KV_ROLE="${KV_ROLE:-kv_producer}"
 KV_BUFFER_SIZE="${KV_BUFFER_SIZE:-2e11}"
 ETCD="${ETCD:-}"  # etcd address for coordination
+KV_NEURON_CORE_OFFSET="${KV_NEURON_CORE_OFFSET:-0}"  # core offset for splitting NeuronCores between workers
 
 # =============================================================================
 # Build Command
@@ -100,13 +101,16 @@ echo "Tool Calling: $ENABLE_TOOL_CALLING"
 if [ "$ENABLE_TOOL_CALLING" = "true" ]; then
     echo "Tool Parser: $TOOL_CALL_PARSER"
 fi
-if [ -n "$ADDITIONAL_CONFIG" ]; then
-    echo "Additional Config: $ADDITIONAL_CONFIG"
+if [ -n "$OVERRIDE_NEURON_CONFIG" ]; then
+    echo "Override Neuron Config: $OVERRIDE_NEURON_CONFIG"
 fi
 if [ -n "$SPECULATIVE_CONFIG" ]; then
     echo "Speculative Config: $SPECULATIVE_CONFIG"
 fi
-echo "VLLM_USE_V1: $VLLM_USE_V1"
+if [ "$ENABLE_KV_TRANSFER" = "true" ]; then
+    echo "KV Transfer: enabled ($KV_ROLE)"
+    echo "ETCD: $ETCD"
+fi
 echo "=================================="
 
 # Build command as array to properly handle JSON arguments
@@ -117,6 +121,7 @@ CMD_ARRAY=(
     "--max-num-seqs" "$MAX_NUM_SEQS"
     "--max-model-len" "$MAX_MODEL_LEN"
     "--tensor-parallel-size" "$TENSOR_PARALLEL_SIZE"
+    "--device" "neuron"
 )
 
 # Add tool calling support
@@ -128,25 +133,24 @@ fi
 # Add prefix caching
 if [ "$ENABLE_PREFIX_CACHING" = "true" ]; then
     CMD_ARRAY+=("--enable-prefix-caching")
-else
-    CMD_ARRAY+=("--no-enable-prefix-caching")
+fi
+
+# Add Neuron config override
+if [ -n "$OVERRIDE_NEURON_CONFIG" ]; then
+    CMD_ARRAY+=("--override-neuron-config" "$OVERRIDE_NEURON_CONFIG")
 fi
 
 # Add KV cache transfer configuration
 if [ "$ENABLE_KV_TRANSFER" = "true" ] && [ -n "$ETCD" ]; then
-    KV_CONFIG="{\"kv_connector\":\"$KV_CONNECTOR\",\"kv_role\":\"$KV_ROLE\",\"kv_buffer_size\":$KV_BUFFER_SIZE,\"etcd\":\"$ETCD\"}"
+    KV_CONFIG="{\"kv_connector\":\"$KV_CONNECTOR\",\"kv_role\":\"$KV_ROLE\",\"kv_buffer_size\":$KV_BUFFER_SIZE,\"etcd\":\"$ETCD\",\"neuron_core_offset\":$KV_NEURON_CORE_OFFSET}"
     CMD_ARRAY+=("--kv-transfer-config" "$KV_CONFIG")
 fi
 
-# Add additional config (neuron overrides)
-if [ -n "$ADDITIONAL_CONFIG" ] && [ "$ADDITIONAL_CONFIG" != "{}" ]; then
-    CMD_ARRAY+=("--additional-config" "$ADDITIONAL_CONFIG")
-fi
-
-# Add speculative decoding config (separate argument)
+# Add speculative decoding config (separate argument, for non-disaggregated use)
 if [ -n "$SPECULATIVE_CONFIG" ] && [ "$SPECULATIVE_CONFIG" != "{}" ]; then
     CMD_ARRAY+=("--speculative-config" "$SPECULATIVE_CONFIG")
 fi
+
 # Execute the command
 echo "Executing: ${CMD_ARRAY[@]}"
 echo "=================================="

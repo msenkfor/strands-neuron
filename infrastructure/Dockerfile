@@ -1,4 +1,4 @@
-FROM public.ecr.aws/neuron/pytorch-inference-vllm-neuronx:0.11.0-neuronx-py312-sdk2.27.0-ubuntu24.04
+FROM public.ecr.aws/neuron/pytorch-inference-vllm-neuronx:0.9.1-neuronx-py310-sdk2.25.0-ubuntu22.04
 
 # Copy startup script and make it executable
 COPY start-vllm.sh /app/start-vllm.sh

@@ -41,6 +41,13 @@ for i in {0..15}; do
     fi
 done
 
+# Pass EFA/Infiniband devices
+for i in {0..7}; do
+    if [ -e "/dev/infiniband/uverbs${i}" ]; then
+        DEVICE_FLAGS="${DEVICE_FLAGS} --device=/dev/infiniband/uverbs${i}"
+    fi
+done
+
 # Handle config file
 ENV_FILE_FLAG=""
 if [ -n "$CONFIG_FILE" ] && [ -f "$CONFIG_FILE" ]; then
@@ -66,10 +73,12 @@ echo "=================================="
 
 docker run -it \
     -e HF_TOKEN=$HF_TOKEN \
+    -e LD_LIBRARY_PATH=/opt/amazon/efa/lib:/opt/amazon/efa/lib64:${LD_LIBRARY_PATH} \
     ${ENV_FILE_FLAG} \
     ${DEVICE_FLAGS} \
-    --cap-add SYS_ADMIN \
-    --cap-add IPC_LOCK \
+    --privileged \
+    --shm-size=10g \
+    -v /opt/amazon/efa:/opt/amazon/efa:ro \
     -p ${PORT}:${PORT} \
     --name ${CONTAINER_NAME} \
     ${IMAGE_NAME}
