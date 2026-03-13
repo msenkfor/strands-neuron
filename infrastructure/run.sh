@@ -7,7 +7,7 @@
 #   CONFIG_FILE=my-config.env ./run.sh    # Set via environment variable
 #   IMAGE_NAME=my-image ./run.sh          # Use custom image name
 #   CONTAINER_NAME=my-container ./run.sh  # Use custom container name
-#   PORT=8081 ./run.sh                    # Override port mapping
+#   PORT=8082 ./run.sh                    # Override port (used for display only with --network=host)
 
 set -e
 
@@ -77,9 +77,9 @@ docker run -it \
     ${ENV_FILE_FLAG} \
     ${DEVICE_FLAGS} \
     --privileged \
+    --network=host \
     --shm-size=10g \
     -v /opt/amazon/efa:/opt/amazon/efa:ro \
-    -p ${PORT}:${PORT} \
     --name ${CONTAINER_NAME} \
     ${IMAGE_NAME}
 
