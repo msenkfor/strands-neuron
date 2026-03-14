@@ -152,7 +152,7 @@ These can be passed at runtime via `--env-file` or `-e` flags:
 | `KV_CONNECTOR` | `NeuronConnector` | KV connector type |
 | `KV_ROLE` | `kv_producer` | KV role: `kv_producer` or `kv_consumer` |
 | `KV_BUFFER_SIZE` | `2e11` | KV buffer size in bytes |
-| `KV_NEURON_CORE_OFFSET` | `0` | Local core index within the visible-core space; always `0` when `NEURON_RT_VISIBLE_CORES` is set |
+| `KV_NEURON_CORE_OFFSET` | `0` | Absolute host logical NeuronCore index for KV transfer |
 | `ETCD` | (empty) | etcd server address (`<host-ip>:8989`) |
 | `NEURON_RT_VISIBLE_CORES` | (empty) | Physical NeuronCore range for this worker (e.g. `0-31`) |
 
