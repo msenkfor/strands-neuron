@@ -48,6 +48,9 @@ class NeuronModel(Model):
             params: Additional model parameters (e.g., temperature, max_tokens).
             streaming: Whether to use streaming mode (default: True). Set to False to work around
                 vLLM streaming bugs with certain models (e.g., Mistral tool calls).
+            timeout: httpx.Timeout for the OpenAI client. Defaults to no read/write/pool timeout
+                with a 10s connect timeout. Pass httpx.Timeout(None) to disable all timeouts,
+                or httpx.Timeout(60.0) for a 60s timeout on all operations.
         """
 
         model_id: str
@@ -55,6 +58,7 @@ class NeuronModel(Model):
         api_key: Optional[str]
         params: Optional[dict[str, Any]]
         streaming: Optional[bool]
+        timeout: Optional[httpx.Timeout]
 
 
     def __init__(self, config: NeuronConfig):
@@ -80,6 +84,7 @@ class NeuronModel(Model):
             "api_key": config.get("api_key", "EMPTY"),
             "params": config.get("params", {}),
             "streaming": config.get("streaming", True),
+            "timeout": config.get("timeout", httpx.Timeout(connect=10.0, read=None, write=None, pool=None)),
         }
         self._check_server_online()
     
@@ -554,6 +559,7 @@ class NeuronModel(Model):
         client = AsyncOpenAI(
             api_key=self.config["api_key"],
             base_url=self.config["base_url"],
+            timeout=self.config["timeout"],
         )
         try:
             yield client
