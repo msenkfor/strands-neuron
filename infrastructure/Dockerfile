@@ -1,4 +1,4 @@
-FROM public.ecr.aws/neuron/pytorch-inference-vllm-neuronx:0.11.0-neuronx-py312-sdk2.27.0-ubuntu24.04
+FROM public.ecr.aws/neuron/pytorch-inference-vllm-neuronx:0.9.1-neuronx-py310-sdk2.25.0-ubuntu22.04
 
 # Copy startup script and make it executable
 COPY start-vllm.sh /app/start-vllm.sh
@@ -51,6 +51,23 @@ ENV KV_CONNECTOR="NeuronConnector"
 ENV KV_ROLE="kv_producer"
 ENV KV_BUFFER_SIZE="2e11"
 ENV ETCD=""
+
+# Install AWS EFA user-space libraries for NeuronConnector KV cache transfer.
+# Must run inside the container so libfabric is compiled against the container's
+# GLIBC (2.35). The host's libfabric (1.30.0) requires GLIBC_2.38 and is incompatible.
+# --skip-kmod: kernel module runs on the host, not needed inside container.
+RUN rm -f /etc/apt/sources.list.d/neuron*.list && \
+    apt-get update -y && \
+    apt-get install -y curl kmod && \
+    curl -O https://efa-installer.amazonaws.com/aws-efa-installer-latest.tar.gz && \
+    tar -xf aws-efa-installer-latest.tar.gz && \
+    cd aws-efa-installer && \
+    ./efa_installer.sh -y --skip-kmod --skip-limit-conf --no-verify && \
+    cd .. && rm -rf aws-efa-installer* && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install dependencies for neuron-proxy-server (already present in image but missing deps)
+RUN pip install quart aiohttp etcd3
 
 EXPOSE ${PORT}
 

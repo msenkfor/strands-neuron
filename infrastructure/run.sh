@@ -7,7 +7,7 @@
 #   CONFIG_FILE=my-config.env ./run.sh    # Set via environment variable
 #   IMAGE_NAME=my-image ./run.sh          # Use custom image name
 #   CONTAINER_NAME=my-container ./run.sh  # Use custom container name
-#   PORT=8081 ./run.sh                    # Override port mapping
+#   PORT=8082 ./run.sh                    # Override port (used for display only with --network=host)
 
 set -e
 
@@ -41,6 +41,13 @@ for i in {0..15}; do
     fi
 done
 
+# Pass EFA/Infiniband devices
+for i in {0..7}; do
+    if [ -e "/dev/infiniband/uverbs${i}" ]; then
+        DEVICE_FLAGS="${DEVICE_FLAGS} --device=/dev/infiniband/uverbs${i}"
+    fi
+done
+
 # Handle config file
 ENV_FILE_FLAG=""
 if [ -n "$CONFIG_FILE" ] && [ -f "$CONFIG_FILE" ]; then
@@ -66,11 +73,12 @@ echo "=================================="
 
 docker run -it \
     -e HF_TOKEN=$HF_TOKEN \
+    -e LD_LIBRARY_PATH=/opt/amazon/efa/lib:/opt/amazon/efa/lib64:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH} \
     ${ENV_FILE_FLAG} \
     ${DEVICE_FLAGS} \
-    --cap-add SYS_ADMIN \
-    --cap-add IPC_LOCK \
-    -p ${PORT}:${PORT} \
+    --privileged \
+    --network=host \
+    --shm-size=10g \
     --name ${CONTAINER_NAME} \
     ${IMAGE_NAME}
 
