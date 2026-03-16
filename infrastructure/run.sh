@@ -79,15 +79,6 @@ docker run -it \
     --privileged \
     --network=host \
     --shm-size=10g \
-    -v /opt/amazon/efa:/opt/amazon/efa:ro \
-    -v /usr/lib/x86_64-linux-gnu/libefa.so.1:/usr/lib/x86_64-linux-gnu/libefa.so.1:ro \
-    -v /usr/lib/x86_64-linux-gnu/libefa.so.1.4.61.0:/usr/lib/x86_64-linux-gnu/libefa.so.1.4.61.0:ro \
-    -v /usr/lib/x86_64-linux-gnu/libibverbs.so.1:/usr/lib/x86_64-linux-gnu/libibverbs.so.1:ro \
-    -v /usr/lib/x86_64-linux-gnu/libibverbs.so.1.15.61.0:/usr/lib/x86_64-linux-gnu/libibverbs.so.1.15.61.0:ro \
-    -v /lib/x86_64-linux-gnu/libnl-3.so.200:/usr/lib/x86_64-linux-gnu/libnl-3.so.200:ro \
-    -v /lib/x86_64-linux-gnu/libnl-3.so.200.26.0:/usr/lib/x86_64-linux-gnu/libnl-3.so.200.26.0:ro \
-    -v /lib/x86_64-linux-gnu/libnl-route-3.so.200:/usr/lib/x86_64-linux-gnu/libnl-route-3.so.200:ro \
-    -v /lib/x86_64-linux-gnu/libnl-route-3.so.200.26.0:/usr/lib/x86_64-linux-gnu/libnl-route-3.so.200.26.0:ro \
     --name ${CONTAINER_NAME} \
     ${IMAGE_NAME}
 

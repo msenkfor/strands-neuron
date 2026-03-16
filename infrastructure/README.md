@@ -246,25 +246,41 @@ Disaggregated inference splits prefill (KV cache generation) and decode (token g
 separate workers connected via EFA. See [DISAGGREGATED_INFERENCE.md](../DISAGGREGATED_INFERENCE.md)
 for full architecture details and troubleshooting.
 
-> **Requires**: `trn2.48xlarge` with EFA enabled at launch, and the
+> **Requires**: Two `trn2.48xlarge` instances with EFA enabled at launch, and the
 > `0.9.1-neuronx-py310-sdk2.25.0-ubuntu22.04` base image (`NeuronConnector` is absent from newer images).
 
-#### Step 1 — Pull the correct image
+#### Step 1 — Launch two instances with EFA enabled
+
+Launch two `trn2.48xlarge` instances using the Neuron DLAMI, same VPC/subnet/security group.
+For each instance: **Advanced network configuration → Enable Elastic Fabric Adapter**.
+The security group needs a self-referencing all-traffic inbound rule.
+
+#### Step 2 — On the prefill instance: pull and build
 
 ```bash
+cd infrastructure
 docker pull public.ecr.aws/neuron/pytorch-inference-vllm-neuronx:0.9.1-neuronx-py310-sdk2.25.0-ubuntu22.04
-```
-
-#### Step 2 — Build
-
-```bash
 ./build.sh configs/distributed-kv.env
 ```
 
-#### Step 3 — Start etcd
+#### Step 3 — On the decode instance: copy repo, pull and build
+
+```bash
+# From the prefill instance
+scp -r ~/strands-neuron ubuntu@<decode-ip>:~/strands-neuron
+
+# On the decode instance
+cd strands-neuron/infrastructure
+docker pull public.ecr.aws/neuron/pytorch-inference-vllm-neuronx:0.9.1-neuronx-py310-sdk2.25.0-ubuntu22.04
+./build.sh configs/kv-consumer.env
+```
+
+#### Step 4 — On the prefill instance: start etcd
 
 ```bash
 export HOST_IP=$(hostname -I | awk '{print $1}')
+
+docker rm -f etcd 2>/dev/null || true
 
 docker run -d --name etcd \
   -p 8989:8989 \
@@ -274,10 +290,7 @@ docker run -d --name etcd \
   --advertise-client-urls http://${HOST_IP}:8989
 ```
 
-Update `ETCD=<host-ip>:8989` in both `configs/distributed-kv.env` and `configs/kv-consumer.env`
-to match `$HOST_IP`.
-
-#### Step 4 — Start prefill worker (Terminal 1)
+#### Step 5 — On the prefill instance: start prefill worker (Terminal 1)
 
 ```bash
 HF_TOKEN=<your-token> CONTAINER_NAME=vllm-prefill ./run.sh configs/distributed-kv.env
@@ -288,33 +301,55 @@ First run compiles the model — expect **20–40 minutes**. Wait for:
 INFO: Application startup complete.
 ```
 
-#### Step 5 — Start decode worker (Terminal 2)
+#### Step 6 — On the decode instance: start decode worker (Terminal 1)
 
 ```bash
 HF_TOKEN=<your-token> CONTAINER_NAME=vllm-decode ./run.sh configs/kv-consumer.env
 ```
 
-#### Step 6 — Test
+Wait for `Application startup complete.`
+
+#### Step 7 — On the prefill instance: start the proxy server (Terminal 2)
+
+The official `neuron-proxy-server` (bundled in the vLLM image) handles request routing with the correct `request_id` encoding — prefill receives decode's address and decode receives prefill's address, so each worker knows where to push/pull the KV cache via EFA. It discovers workers automatically via etcd.
 
 ```bash
-curl http://localhost:8080/v1/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model": "meta-llama/Llama-3.3-70B-Instruct", "prompt": "Hello!", "max_tokens": 50}'
+export HOST_IP=$(hostname -I | awk '{print $1}')
+
+docker rm -f proxy 2>/dev/null || true
+
+docker run -d \
+  --name proxy \
+  --network=host \
+  -e ETCD_IP=${HOST_IP} \
+  -e ETCD_PORT=8989 \
+  vllm-server-strands \
+  bash -c "neuron-proxy-server --etcd \$ETCD_IP:\$ETCD_PORT"
 ```
 
-Send all requests to port **8080** (prefill). The decode worker on port 8081 is not called directly.
+The proxy listens on port **8000**.
 
-#### Single-instance core partitioning
+#### Step 8 — Test
 
-On a single `trn2.48xlarge`, both workers must share the 64 NeuronCores. Each worker is pinned
-to half via `NEURON_RT_VISIBLE_CORES` and runs at `TENSOR_PARALLEL_SIZE=16`:
+Send requests to the proxy — do **not** call prefill or decode directly:
 
-| Worker | Config file | `NEURON_RT_VISIBLE_CORES` | `TENSOR_PARALLEL_SIZE` |
-|---|---|---|---|
-| Prefill | `distributed-kv.env` | `0-31` | `16` |
-| Decode | `kv-consumer.env` | `32-63` | `16` |
+```bash
+export HOST_IP=$(hostname -I | awk '{print $1}')
 
-These values are already set in the provided config files.
+curl http://${HOST_IP}:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "meta-llama/Llama-3.3-70B-Instruct",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "max_tokens": 50
+  }'
+```
+
+The proxy:
+1. Discovers prefill and decode workers via etcd
+2. Sends prefill the request with decode's address in the `request_id` (so prefill knows where to push KV cache)
+3. Sends decode the request with prefill's address in the `request_id` (so decode knows where to pull KV cache from)
+4. Streams the response from decode back to the client
 
 ## Tool Calling Configuration
 
@@ -367,8 +402,9 @@ The build script includes error handling that pauses on failure. If the build fa
 - The neuron config should include `"enable_fused_speculation": true`
 - Use `MAX_NUM_SEQS=1` for speculative decoding
 
-### Disaggregated inference: `Logical Neuron Core(s) not available`
+### Disaggregated inference: `No matching NIC found for referred NIC BDF`
 
-Both workers are competing for all 64 NeuronCores. Ensure `NEURON_RT_VISIBLE_CORES` is set in
-both configs (`0-31` for prefill, `32-63` for decode) and `TENSOR_PARALLEL_SIZE=16` for each.
+The instance was launched with insufficient EFA NICs. Each NeuronDevice requires an adjacent EFA
+NIC (by PCI BDF). A `trn2.48xlarge` needs ~8 EFA NICs for full coverage of all 16 NeuronDevices.
+Use two separate instances (one per worker), each launched with EFA enabled.
 See the [Disaggregated Inference guide](../DISAGGREGATED_INFERENCE.md) for details.
