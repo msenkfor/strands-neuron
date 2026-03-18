@@ -1,0 +1,28 @@
+FROM public.ecr.aws/neuron/pytorch-inference-vllm-neuronx:0.11.0-neuronx-py312-sdk2.27.0-ubuntu24.04
+
+# Copy compile entrypoint
+COPY start-compile.sh /app/start-compile.sh
+RUN chmod +x /app/start-compile.sh
+
+# Create directories for model input and compiled output
+RUN mkdir -p /model /output
+
+# Build arguments (baked into image as defaults, all overridable at runtime)
+ARG TP_DEGREE="2"
+ARG BATCH_SIZE="4"
+ARG MODEL_PATH="/model"
+ARG OUTPUT_DIR="/output"
+
+ENV TP_DEGREE="${TP_DEGREE}"
+ENV BATCH_SIZE="${BATCH_SIZE}"
+ENV MODEL_PATH="${MODEL_PATH}"
+ENV OUTPUT_DIR="${OUTPUT_DIR}"
+
+# Optional: path to a config file mounted inside the container
+ENV CONFIG_FILE=""
+
+# /model   — mount your model weights here (read-only)
+# /output  — compiled artifacts will be written here
+VOLUME ["/model", "/output"]
+
+CMD ["/app/start-compile.sh"]

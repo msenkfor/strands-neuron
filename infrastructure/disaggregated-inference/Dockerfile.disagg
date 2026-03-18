@@ -1,0 +1,51 @@
+FROM public.ecr.aws/neuron/pytorch-inference-vllm-neuronx:0.11.0-neuronx-py312-sdk2.27.0-ubuntu24.04
+
+# Copy disaggregated server entrypoint
+COPY start-disagg.sh /app/start-disagg.sh
+RUN chmod +x /app/start-disagg.sh
+
+# Patch llama_tool_parser to handle both Llama format {"name":...,"parameters":...}
+# and OpenAI format {"type":"function","function":{"name":...,"arguments":"..."}}
+# Llama 3.3 70B generates the OpenAI format when given large tool sets.
+COPY patch_llama_tool_parser.py /tmp/patch_llama_tool_parser.py
+RUN python3 /tmp/patch_llama_tool_parser.py
+
+# Create directories for model weights and compiled artifacts
+RUN mkdir -p /model /compiled-model
+
+# Build arguments (baked-in defaults, all overridable at runtime via env vars)
+ARG TP_DEGREE="2"
+ARG BATCH_SIZE="4"
+
+ENV TP_DEGREE="${TP_DEGREE}"
+ENV BATCH_SIZE="${BATCH_SIZE}"
+ENV MODEL_PATH="/model"
+ENV COMPILED_MODEL_PATH="/compiled-model"
+
+# =============================================================================
+# Disaggregation Configuration
+# =============================================================================
+# SEND=1  -> prefill node (kv_producer, port 8100)
+# SEND=0  -> decode node  (kv_consumer, port 8200)
+ENV SEND="0"
+
+# SINGLE_INSTANCE=1 splits Neuron cores: prefill=0-31, decode=32-63
+ENV SINGLE_INSTANCE="0"
+
+# IP addresses for KV cache transfer between prefill and decode nodes
+# Use 127.0.0.1 for single-instance mode; set to actual IPs for multi-node
+ENV NEURON_SEND_IP="127.0.0.1"
+ENV NEURON_RECV_IP="127.0.0.1"
+
+# Optional: path to a config file mounted inside the container
+ENV CONFIG_FILE=""
+
+# /model          — mount original model weights here (read-only)
+# /compiled-model — mount compiled Neuron artifacts here (from run-compile.sh output)
+VOLUME ["/model", "/compiled-model"]
+
+# Ports: 8100 (prefill) and 8200 (decode)
+# Use --network host when running SINGLE_INSTANCE mode so containers share localhost
+EXPOSE 8100 8200
+
+CMD ["/app/start-disagg.sh"]

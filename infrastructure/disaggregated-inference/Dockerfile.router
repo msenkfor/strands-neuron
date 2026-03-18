@@ -1,0 +1,19 @@
+FROM public.ecr.aws/neuron/pytorch-inference-vllm-neuronx:0.11.0-neuronx-py312-sdk2.27.0-ubuntu24.04
+
+# quart and aiohttp are required by the proxy server
+RUN pip install quart aiohttp
+
+COPY neuron_proxy_server.py /app/neuron_proxy_server.py
+COPY start-router.sh /app/start-router.sh
+RUN chmod +x /app/start-router.sh
+
+# Configuration (all overridable at runtime via env vars)
+ENV PREFILL_IP="127.0.0.1"
+ENV PREFILL_PORT="8100"
+ENV DECODE_IP="127.0.0.1"
+ENV DECODE_PORT="8200"
+ENV ROUTER_PORT="8000"
+
+EXPOSE 8000
+
+CMD ["/app/start-router.sh"]

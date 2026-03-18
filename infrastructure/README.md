@@ -277,6 +277,156 @@ Pre-configured profiles in `configs/`:
 | `distributed-kv.env` | Distributed setup with KV cache transfer |
 | `speculative-decoding.env` | Speculative decoding for improved latency |
 
+## Disaggregated Inference
+
+Disaggregated inference splits the prefill (context encoding) and decode (token generation) phases across separate processes. More information can be found: https://awsdocs-neuron.readthedocs-hosted.com/en/latest/libraries/nxd-inference/tutorials/disaggregated-inference-tutorial-1p1d.html
+
+**Notes on this setup:**
+- The vLLM image (`pytorch-inference-vllm-neuronx:0.11.0`) does **not** include `NeuronConnector`. KV cache transfer uses `SharedStorageConnector` (a shared host directory mounted into both containers).
+- Bake `TP_DEGREE` and `BATCH_SIZE` into the image at build time — compilation artifacts must match these values exactly.
+
+All disaggregated inference scripts live in `disaggregated-inference/`:
+
+```bash
+cd infrastructure/disaggregated-inference
+```
+
+### Step 1: Build the compile image
+
+```bash
+# Bake TP_DEGREE and BATCH_SIZE at build time — must match your hardware and compiled artifacts
+TP_DEGREE=32 BATCH_SIZE=8 ./build-compile.sh
+```
+
+### Step 2: Compile the model
+
+`inference_demo` is used for AOT compilation. The model is downloaded from HuggingFace via `snapshot_download` on first run and cached in `HF_CACHE_DIR`.
+
+```bash
+HF_TOKEN=<your-token> \
+MODEL_PATH=meta-llama/Llama-3.3-70B-Instruct \
+HF_CACHE_DIR=/home/ubuntu/.cache/huggingface \
+HOST_OUTPUT_DIR=/home/ubuntu/compiled-models \
+./run-compile.sh
+```
+
+This writes compiled artifacts to `HOST_OUTPUT_DIR/di_traced_model_tp<N>_b<N>/`.
+
+> **Tip:** Always set `HF_CACHE_DIR`. Compilation takes ~8 minutes and re-downloading 140GB on every run is expensive.
+
+### Step 3: Build the disaggregated server image
+
+```bash
+# Use the same TP_DEGREE and BATCH_SIZE as the compile step
+TP_DEGREE=32 BATCH_SIZE=8 ./build-disagg.sh
+```
+
+### Step 4: Run the servers
+
+Both containers mount the same `HOST_KV_CACHE_DIR` so they can exchange KV cache via `SharedStorageConnector`. Run each in a separate terminal.
+
+**Terminal 1 — prefill node (port 8100):**
+```bash
+SEND=1 SINGLE_INSTANCE=1 \
+HF_TOKEN=<your-token> \
+MODEL_PATH=meta-llama/Llama-3.3-70B-Instruct \
+HF_CACHE_DIR=/home/ubuntu/.cache/huggingface \
+HOST_COMPILED_MODEL_PATH=/home/ubuntu/compiled-models/di_traced_model_tp32_b8 \
+HOST_KV_CACHE_DIR=/home/ubuntu/kv-cache \
+./run-disagg.sh
+```
+
+**Terminal 2 — decode node (port 8200):**
+```bash
+SINGLE_INSTANCE=1 \
+HF_TOKEN=<your-token> \
+MODEL_PATH=meta-llama/Llama-3.3-70B-Instruct \
+HF_CACHE_DIR=/home/ubuntu/.cache/huggingface \
+HOST_COMPILED_MODEL_PATH=/home/ubuntu/compiled-models/di_traced_model_tp32_b8 \
+HOST_KV_CACHE_DIR=/home/ubuntu/kv-cache \
+./run-disagg.sh
+```
+
+### Disaggregated Inference Configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `HF_TOKEN` | (empty) | HuggingFace token — required for gated/private models |
+| `MODEL_PATH` | (empty) | HuggingFace model ID (e.g. `meta-llama/Llama-3.3-70B-Instruct`) — used when `HOST_MODEL_PATH` is not set |
+| `HOST_MODEL_PATH` | (empty) | Host path to local model weights — mounted read-only at `/model`. Takes precedence over `MODEL_PATH` |
+| `HF_CACHE_DIR` | (empty) | Host path to use as HuggingFace cache — avoids re-downloading on subsequent runs |
+| `HOST_OUTPUT_DIR` | (required, compile only) | Host path for compiled artifact output — mounted at `/output` |
+| `HOST_COMPILED_MODEL_PATH` | (required, server only) | Host path to compiled artifacts — mounted read-only at `/compiled-model` |
+| `HOST_KV_CACHE_DIR` | (empty) | Host path for KV cache transfer between prefill and decode — mounted at `/kv-cache` in both containers |
+| `TP_DEGREE` | `2` | Tensor parallelism degree — must match compiled artifacts |
+| `BATCH_SIZE` | `4` | Max batch size — must match compiled artifacts |
+| `SEND` | `0` | `1` = prefill node (kv_producer, port 8100), `0` = decode node (kv_consumer, port 8200) |
+| `SINGLE_INSTANCE` | `0` | `1` = split Neuron cores on one device (prefill: 0–31, decode: 32–63) |
+
+### Disaggregated Inference Scripts
+
+All scripts are in `infrastructure/disaggregated-inference/`.
+
+| Script | Purpose |
+|---|---|
+| `build-compile.sh` | Builds the `inference_demo` compile image |
+| `run-compile.sh` | Runs compilation inside Docker with volume-mounted model |
+| `build-disagg.sh` | Builds the disaggregated vLLM server image |
+| `run-disagg.sh` | Runs prefill or decode server container |
+| `start-compile.sh` | Container entrypoint for compilation (do not run directly) |
+| `start-disagg.sh` | Container entrypoint for disaggregated server (do not run directly) |
+| `patch_llama_tool_parser.py` | Patches vLLM's tool parser to handle OpenAI-format tool calls from Llama 3.3 |
+
+### Step 5: Run the router
+
+The router is the single endpoint callers send requests to. It forwards each request to both the prefill (port 8100) and decode (port 8200) servers and returns the combined response.
+
+**Build:**
+```bash
+cd infrastructure/disaggregated-inference
+./build-router.sh
+```
+
+**Run (Terminal 3 — single-instance mode):**
+```bash
+./run-router.sh
+```
+
+**Run (multi-instance mode):**
+```bash
+PREFILL_IP=<prefill-machine-ip> \
+DECODE_IP=<decode-machine-ip> \
+./run-router.sh
+```
+
+The router is ready when you see:
+```
+INFO:hypercorn.error:Running on http://0.0.0.0:8000 (CTRL + C to quit)
+```
+
+Send all inference requests to **port 8000**.
+
+### Router Configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `PREFILL_IP` | `127.0.0.1` | IP of the prefill node |
+| `PREFILL_PORT` | `8100` | Port of the prefill node |
+| `DECODE_IP` | `127.0.0.1` | IP of the decode node |
+| `DECODE_PORT` | `8200` | Port of the decode node |
+| `ROUTER_PORT` | `8000` | Port the router listens on |
+
+### Router Scripts
+
+All scripts are in `infrastructure/disaggregated-inference/`.
+
+| Script | Purpose |
+|---|---|
+| `build-router.sh` | Builds the router image |
+| `run-router.sh` | Runs the router container |
+| `start-router.sh` | Container entrypoint (do not run directly) |
+| `neuron_proxy_server.py` | Quart-based proxy that fans requests to prefill + decode |
+
 ## Troubleshooting
 
 ### Terminal closes on build failure
