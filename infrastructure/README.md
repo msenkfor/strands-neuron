@@ -148,11 +148,15 @@ These can be passed at runtime via `--env-file` or `-e` flags:
 | `ADDITIONAL_CONFIG` | (empty) | Neuron config overrides (JSON) |
 | `SPECULATIVE_CONFIG` | (empty) | Speculative decoding config (JSON) |
 | `VLLM_USE_V1` | `1` | vLLM V1 engine control |
-| `ENABLE_KV_TRANSFER` | `false` | Enable KV cache transfer (distributed) |
+| `VLLM_DEVICE` | (unset) | Set to `neuron` for disaggregated inference |
+| `SPECULATIVE_MAX_MODEL_LEN` | (unset) | Required for disaggregated inference (set equal to `MAX_MODEL_LEN`) |
+| `OVERRIDE_NEURON_CONFIG` | (unset) | Neuron config override JSON (pass `{}` for disaggregated inference) |
+| `ENABLE_KV_TRANSFER` | `false` | Enable KV cache transfer (disaggregated inference) |
 | `KV_CONNECTOR` | `NeuronConnector` | KV connector type |
-| `KV_ROLE` | `kv_producer` | KV role: `kv_producer` or `kv_consumer` |
+| `KV_ROLE` | `kv_producer` | `kv_producer` (prefill) or `kv_consumer` (decode) |
 | `KV_BUFFER_SIZE` | `2e11` | KV buffer size in bytes |
-| `ETCD` | (empty) | etcd server address for KV coordination |
+| `ETCD` | (unset) | Required when `ENABLE_KV_TRANSFER=true`: `<proxy-ip>:8989` |
+| `NEURON_RT_VISIBLE_CORES` | (unset) | NeuronCore range — single-instance only (e.g. `0-31`) |
 
 ### Configuration Methods
 
@@ -238,16 +242,80 @@ ADDITIONAL_CONFIG='{"override_neuron_config": {"enable_bucketing": true}}'
 ADDITIONAL_CONFIG='{"override_neuron_config": {"enable_bucketing": true, "context_encoding_buckets": [256, 512, 1024, 2048]}}'
 ```
 
-### KV Cache Transfer (Distributed)
+### Disaggregated Inference
 
-For distributed setups with KV cache transfer:
+Disaggregated inference separates the compute-bound prefill phase from the
+memory-bandwidth-bound decode phase, improving throughput and TTFT under load.
 
-```env
-ENABLE_KV_TRANSFER=true
-KV_CONNECTOR=NeuronConnector
-KV_ROLE=kv_producer
-KV_BUFFER_SIZE=2e11
-ETCD=http://etcd-server:2379
+**Requirements:** trn1.32xlarge or trn2.48xlarge with EFA enabled (EFA is
+required even for single-instance setups). Uses the AWS Neuron DLC directly —
+no custom image build needed.
+
+The setup has three components:
+- **etcd + proxy** — runs on a lightweight instance (e.g. m5.xlarge)
+- **prefill server** — runs on a Neuron instance
+- **decode server** — runs on a Neuron instance (same or different)
+
+#### Step 1 — Start etcd and the proxy (on your proxy instance)
+
+```bash
+cd disaggregated
+./run-router.sh
+```
+
+This starts etcd (port 8989) and `neuron-proxy-server` (port 8000) using the
+Neuron DLC. At the end it prints the `ETCD=<ip>:8989` value you'll need next.
+
+#### Step 2 — Start prefill and decode servers (on your Neuron instance)
+
+```bash
+# Terminal 1 — prefill server (port 8000)
+ETCD=<proxy-ip>:8989 HF_TOKEN=<token> ./disaggregated/run-prefill.sh
+
+# Terminal 2 — decode server (port 8000)
+ETCD=<proxy-ip>:8989 HF_TOKEN=<token> ./disaggregated/run-decode.sh
+```
+
+Workers register with etcd automatically. The proxy routes to all registered workers.
+
+#### Step 3 — Test the setup
+
+```bash
+curl -s http://<proxy-ip>:8000/v1/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "meta-llama/Llama-3.3-70B-Instruct",
+    "prompt": ["a tornado is a"],
+    "max_tokens": 10,
+    "temperature": 0
+  }'
+```
+
+#### Step 4 — Connect strands-neuron
+
+Point `NeuronModel` at the proxy. No other code changes needed:
+
+```python
+from strands_neuron import NeuronModel
+
+model = NeuronModel(config={
+    "model_id": "meta-llama/Llama-3.3-70B-Instruct",
+    "base_url": "http://<proxy-ip>:8000/v1",
+})
+```
+
+#### Multi-Instance (prefill and decode on separate nodes)
+
+Each worker registers itself with etcd automatically — no IP coordination
+between prefill and decode is needed. Set `ETCD` to the proxy instance on
+every worker. Each instance uses all of its NeuronCores.
+
+#### Known Issues
+
+If you see `ENC:kv_store_acquire_file_lock Failed to open kv store server lock file Permission denied`:
+
+```bash
+sudo rm /tmp/nrt_kv_store_server.lock
 ```
 
 ## Tool Calling Configuration
@@ -275,6 +343,8 @@ Pre-configured profiles in `configs/`:
 | `tool-calling.env` | Tool calling enabled (recommended for Strands agents) |
 | `high-throughput.env` | Optimized for production workloads |
 | `distributed-kv.env` | Distributed setup with KV cache transfer |
+| `disaggregated-prefill.env` | Disaggregated inference — prefill server (kv_producer, port 8000) |
+| `disaggregated-decode.env` | Disaggregated inference — decode server (kv_consumer, port 8000) |
 | `speculative-decoding.env` | Speculative decoding for improved latency |
 
 ## Troubleshooting

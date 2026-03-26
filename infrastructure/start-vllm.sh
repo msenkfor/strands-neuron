@@ -1,29 +1,26 @@
 #!/bin/bash
 # vLLM Neuron Server Startup Script
-# This script provides flexible configuration for vLLM on AWS Neuron instances
 #
-# Configuration Priority (highest to lowest):
-#   1. Environment variables passed to container
+# Configuration priority (highest to lowest):
+#   1. -e VAR=value flags on docker run
 #   2. --env-file passed to docker run
-#   3. CONFIG_FILE environment variable (path to config file inside container)
-#   4. Build-time defaults baked into the image
+#   3. CONFIG_FILE sourced inside the container
+#   4. Defaults below
 
 set -e
 
 # =============================================================================
 # Load Config File (if specified)
 # =============================================================================
-# CONFIG_FILE can point to a config file mounted inside the container
-# This allows runtime configuration without rebuilding the image
 if [ -n "$CONFIG_FILE" ] && [ -f "$CONFIG_FILE" ]; then
     echo "Loading configuration from: $CONFIG_FILE"
-    set -a  # automatically export all variables
+    set -a
     source "$CONFIG_FILE"
     set +a
 fi
 
 # =============================================================================
-# Core Configuration (Required)
+# Core Configuration
 # =============================================================================
 MODEL="${MODEL:-mistralai/Mistral-7B-Instruct-v0.3}"
 PORT="${PORT:-8080}"
@@ -31,58 +28,63 @@ PORT="${PORT:-8080}"
 # =============================================================================
 # Model Configuration
 # =============================================================================
-MAX_NUM_SEQS="${MAX_NUM_SEQS:-4}"
-MAX_MODEL_LEN="${MAX_MODEL_LEN:-1024}"
+# Accept both MAX_NUM_SEQS and VLLM_BATCH (tutorial alias)
+MAX_NUM_SEQS="${MAX_NUM_SEQS:-${VLLM_BATCH:-4}}"
+# Accept both MAX_MODEL_LEN and MAX_LEN (tutorial alias)
+MAX_MODEL_LEN="${MAX_MODEL_LEN:-${MAX_LEN:-1024}}"
 TENSOR_PARALLEL_SIZE="${TENSOR_PARALLEL_SIZE:-8}"
+
+# =============================================================================
+# Device
+# =============================================================================
+# Set VLLM_DEVICE=neuron for Neuron instances (required for disaggregated inference)
+VLLM_DEVICE="${VLLM_DEVICE:-}"
 
 # =============================================================================
 # Tool Calling Configuration
 # =============================================================================
-# Enable tool calling support
 ENABLE_TOOL_CALLING="${ENABLE_TOOL_CALLING:-true}"
-# Parser: llama3_json, hermes, mistral, etc.
-# See: https://docs.vllm.ai/en/latest/features/tool_calling/
 TOOL_CALL_PARSER="${TOOL_CALL_PARSER:-llama3_json}"
 
 # =============================================================================
 # Performance Configuration
 # =============================================================================
-# Prefix caching can improve performance for repeated prompts
 ENABLE_PREFIX_CACHING="${ENABLE_PREFIX_CACHING:-false}"
 
 # =============================================================================
-# Advanced Configuration (--additional-config)
+# Speculative Decoding
 # =============================================================================
-# Neuron config overrides (JSON format)
-# Example: '{"override_neuron_config":{"enable_bucketing":false}}'
-ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG:-}"
-# Strip surrounding quotes if present (handles docker --env-file including literal quotes)
-ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG#\'}"
-ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG%\'}"
-ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG#\"}"
-ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG%\"}"
+# Max model length for speculative decoding (required for disaggregated inference)
+SPECULATIVE_MAX_MODEL_LEN="${SPECULATIVE_MAX_MODEL_LEN:-}"
 
-# =============================================================================
-# Speculative Decoding (--speculative-config)
-# =============================================================================
-# Speculative decoding config (JSON format, empty to disable)
-# Example: '{"model": "Qwen/Qwen3-0.6B", "num_speculative_tokens": 7, "max_model_len": 2048, "method": "eagle"}'
+# Speculative decoding config (JSON, empty to disable)
 SPECULATIVE_CONFIG="${SPECULATIVE_CONFIG:-}"
-# Strip surrounding quotes if present
 SPECULATIVE_CONFIG="${SPECULATIVE_CONFIG#\'}"
 SPECULATIVE_CONFIG="${SPECULATIVE_CONFIG%\'}"
 SPECULATIVE_CONFIG="${SPECULATIVE_CONFIG#\"}"
 SPECULATIVE_CONFIG="${SPECULATIVE_CONFIG%\"}"
 
 # =============================================================================
-# KV Cache Transfer (Optional - for distributed setups)
+# Neuron Config Overrides
 # =============================================================================
-# Enable KV cache transfer between instances
+# --override-neuron-config: pass '{}' for disaggregated inference
+OVERRIDE_NEURON_CONFIG="${OVERRIDE_NEURON_CONFIG:-}"
+
+# --additional-config: for other neuron overrides (JSON)
+ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG:-}"
+ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG#\'}"
+ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG%\'}"
+ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG#\"}"
+ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG%\"}"
+
+# =============================================================================
+# KV Cache Transfer (disaggregated inference)
+# =============================================================================
 ENABLE_KV_TRANSFER="${ENABLE_KV_TRANSFER:-false}"
 KV_CONNECTOR="${KV_CONNECTOR:-NeuronConnector}"
-KV_ROLE="${KV_ROLE:-kv_producer}"
+KV_ROLE="${KV_ROLE:-kv_producer}"       # kv_producer (prefill) or kv_consumer (decode)
 KV_BUFFER_SIZE="${KV_BUFFER_SIZE:-2e11}"
-ETCD="${ETCD:-}"  # etcd address for coordination
+ETCD="${ETCD:-}"                         # Required: <proxy-ip>:8989
 
 # =============================================================================
 # Build Command
@@ -91,25 +93,20 @@ ETCD="${ETCD:-}"  # etcd address for coordination
 echo "=================================="
 echo "Starting vLLM Neuron Server"
 echo "=================================="
-echo "Model: $MODEL"
-echo "Port: $PORT"
-echo "Max Sequences: $MAX_NUM_SEQS"
-echo "Max Model Length: $MAX_MODEL_LEN"
-echo "Tensor Parallel Size: $TENSOR_PARALLEL_SIZE"
-echo "Tool Calling: $ENABLE_TOOL_CALLING"
-if [ "$ENABLE_TOOL_CALLING" = "true" ]; then
-    echo "Tool Parser: $TOOL_CALL_PARSER"
+echo "Model:              $MODEL"
+echo "Port:               $PORT"
+echo "Max Sequences:      $MAX_NUM_SEQS"
+echo "Max Model Length:   $MAX_MODEL_LEN"
+echo "Tensor Parallel:    $TENSOR_PARALLEL_SIZE"
+if [ -n "$VLLM_DEVICE" ]; then
+    echo "Device:             $VLLM_DEVICE"
 fi
-if [ -n "$ADDITIONAL_CONFIG" ]; then
-    echo "Additional Config: $ADDITIONAL_CONFIG"
+echo "Tool Calling:       $ENABLE_TOOL_CALLING"
+if [ "$ENABLE_KV_TRANSFER" = "true" ]; then
+    echo "KV Transfer:        role=$KV_ROLE etcd=$ETCD"
 fi
-if [ -n "$SPECULATIVE_CONFIG" ]; then
-    echo "Speculative Config: $SPECULATIVE_CONFIG"
-fi
-echo "VLLM_USE_V1: $VLLM_USE_V1"
 echo "=================================="
 
-# Build command as array to properly handle JSON arguments
 CMD_ARRAY=(
     "python3" "-m" "vllm.entrypoints.openai.api_server"
     "--model" "$MODEL"
@@ -119,35 +116,54 @@ CMD_ARRAY=(
     "--tensor-parallel-size" "$TENSOR_PARALLEL_SIZE"
 )
 
-# Add tool calling support
+# Device backend (e.g., neuron)
+if [ -n "$VLLM_DEVICE" ]; then
+    CMD_ARRAY+=("--device" "$VLLM_DEVICE")
+fi
+
+# Tool calling
 if [ "$ENABLE_TOOL_CALLING" = "true" ]; then
     CMD_ARRAY+=("--enable-auto-tool-choice")
     CMD_ARRAY+=("--tool-call-parser" "$TOOL_CALL_PARSER")
 fi
 
-# Add prefix caching
+# Prefix caching
 if [ "$ENABLE_PREFIX_CACHING" = "true" ]; then
     CMD_ARRAY+=("--enable-prefix-caching")
 else
     CMD_ARRAY+=("--no-enable-prefix-caching")
 fi
 
-# Add KV cache transfer configuration
-if [ "$ENABLE_KV_TRANSFER" = "true" ] && [ -n "$ETCD" ]; then
+# Speculative max model length (required for disaggregated inference)
+if [ -n "$SPECULATIVE_MAX_MODEL_LEN" ]; then
+    CMD_ARRAY+=("--speculative-max-model-len" "$SPECULATIVE_MAX_MODEL_LEN")
+fi
+
+# KV cache transfer (disaggregated inference)
+if [ "$ENABLE_KV_TRANSFER" = "true" ]; then
+    if [ -z "$ETCD" ]; then
+        echo "Error: ETCD must be set when ENABLE_KV_TRANSFER=true (e.g. ETCD=<proxy-ip>:8989)"
+        exit 1
+    fi
     KV_CONFIG="{\"kv_connector\":\"$KV_CONNECTOR\",\"kv_role\":\"$KV_ROLE\",\"kv_buffer_size\":$KV_BUFFER_SIZE,\"etcd\":\"$ETCD\"}"
     CMD_ARRAY+=("--kv-transfer-config" "$KV_CONFIG")
 fi
 
-# Add additional config (neuron overrides)
+# Neuron config override (pass '{}' for disaggregated inference)
+if [ -n "$OVERRIDE_NEURON_CONFIG" ]; then
+    CMD_ARRAY+=("--override-neuron-config" "$OVERRIDE_NEURON_CONFIG")
+fi
+
+# Additional config (neuron overrides)
 if [ -n "$ADDITIONAL_CONFIG" ] && [ "$ADDITIONAL_CONFIG" != "{}" ]; then
     CMD_ARRAY+=("--additional-config" "$ADDITIONAL_CONFIG")
 fi
 
-# Add speculative decoding config (separate argument)
+# Speculative decoding config
 if [ -n "$SPECULATIVE_CONFIG" ] && [ "$SPECULATIVE_CONFIG" != "{}" ]; then
     CMD_ARRAY+=("--speculative-config" "$SPECULATIVE_CONFIG")
 fi
-# Execute the command
+
 echo "Executing: ${CMD_ARRAY[@]}"
 echo "=================================="
 exec "${CMD_ARRAY[@]}"

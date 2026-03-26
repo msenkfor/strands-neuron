@@ -1,0 +1,17 @@
+FROM python:3.12-slim
+
+RUN pip install --no-cache-dir quart aiohttp
+
+COPY neuron_proxy_server.py /app/neuron_proxy_server.py
+COPY start-router.sh /app/start-router.sh
+RUN chmod +x /app/start-router.sh
+
+ENV PREFILL_IP="127.0.0.1"
+ENV PREFILL_PORT="8100"
+ENV DECODE_IP="127.0.0.1"
+ENV DECODE_PORT="8200"
+ENV ROUTER_PORT="8000"
+
+EXPOSE 8000
+
+CMD ["/app/start-router.sh"]
