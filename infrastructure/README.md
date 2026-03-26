@@ -247,26 +247,54 @@ ADDITIONAL_CONFIG='{"override_neuron_config": {"enable_bucketing": true, "contex
 Disaggregated inference separates the compute-bound prefill phase from the
 memory-bandwidth-bound decode phase, improving throughput and TTFT under load.
 
-**Requirements:** trn1.32xlarge or trn2.48xlarge with EFA enabled (EFA is
-required even for single-instance setups). Uses the AWS Neuron DLC directly —
-no custom image build needed.
+**Requirements:** trn1.32xlarge or trn2.48xlarge with EFA enabled. Uses the
+AWS Neuron DLC directly — `pull.sh` and `build.sh` are **not needed**.
 
-The setup has three components:
-- **etcd + proxy** — runs on a lightweight instance (e.g. m5.xlarge)
-- **prefill server** — runs on a Neuron instance
-- **decode server** — runs on a Neuron instance (same or different)
-
-#### Step 1 — Start etcd and the proxy (on your proxy instance)
+Before running any `docker run` command that pulls from ECR, authenticate on
+**each instance** (proxy, prefill, and decode):
 
 ```bash
-cd disaggregated
-./run-router.sh
+. pull.sh
+```
+
+The setup has three EC2 instances:
+- **Proxy instance** (e.g. m5.xlarge) — runs etcd + neuron-proxy-server
+- **Prefill instance** (trn2.48xlarge, EFA enabled) — runs vLLM as `kv_producer`
+- **Decode instance** (trn2.48xlarge, EFA enabled) — runs vLLM as `kv_consumer`
+
+All three must be in the same VPC. Use **private IPs** for all inter-instance
+communication — etcd does not need a public IP.
+
+#### Network (Security Groups)
+
+The simplest setup is one shared security group for all three instances:
+
+| Direction | Port | Source | Purpose |
+|-----------|------|--------|---------|
+| Inbound | All traffic | Self (same SG) | etcd, port 8000, EFA between nodes |
+| Inbound | 8000 | Clients | Inference requests to proxy |
+
+#### Step 1 — Launch the proxy instance
+
+Launch an `m5.xlarge` (or similar) in the same VPC as your Neuron instances.
+No Neuron hardware or EFA needed. Connect via SSH or Session Manager, then:
+
+```bash
+cd infrastructure
+./disaggregated/run-router.sh
 ```
 
 This starts etcd (port 8989) and `neuron-proxy-server` (port 8000) using the
-Neuron DLC. At the end it prints the `ETCD=<ip>:8989` value you'll need next.
+Neuron DLC. At the end it prints the `ETCD=<private-ip>:8989` value you'll
+need on the prefill and decode instances.
 
-#### Step 2 — Start prefill and decode servers (on your Neuron instance)
+Verify both containers are running:
+
+```bash
+docker ps
+```
+
+#### Step 2 — Start prefill and decode servers (on your Neuron instances)
 
 ```bash
 # Terminal 1 — prefill server (port 8000)

@@ -35,12 +35,6 @@ MAX_MODEL_LEN="${MAX_MODEL_LEN:-${MAX_LEN:-1024}}"
 TENSOR_PARALLEL_SIZE="${TENSOR_PARALLEL_SIZE:-8}"
 
 # =============================================================================
-# Device
-# =============================================================================
-# Set VLLM_DEVICE=neuron for Neuron instances (required for disaggregated inference)
-VLLM_DEVICE="${VLLM_DEVICE:-}"
-
-# =============================================================================
 # Tool Calling Configuration
 # =============================================================================
 ENABLE_TOOL_CALLING="${ENABLE_TOOL_CALLING:-true}"
@@ -54,9 +48,6 @@ ENABLE_PREFIX_CACHING="${ENABLE_PREFIX_CACHING:-false}"
 # =============================================================================
 # Speculative Decoding
 # =============================================================================
-# Max model length for speculative decoding (required for disaggregated inference)
-SPECULATIVE_MAX_MODEL_LEN="${SPECULATIVE_MAX_MODEL_LEN:-}"
-
 # Speculative decoding config (JSON, empty to disable)
 SPECULATIVE_CONFIG="${SPECULATIVE_CONFIG:-}"
 SPECULATIVE_CONFIG="${SPECULATIVE_CONFIG#\'}"
@@ -67,10 +58,7 @@ SPECULATIVE_CONFIG="${SPECULATIVE_CONFIG%\"}"
 # =============================================================================
 # Neuron Config Overrides
 # =============================================================================
-# --override-neuron-config: pass '{}' for disaggregated inference
-OVERRIDE_NEURON_CONFIG="${OVERRIDE_NEURON_CONFIG:-}"
-
-# --additional-config: for other neuron overrides (JSON)
+# --additional-config: neuron-specific overrides (JSON)
 ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG:-}"
 ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG#\'}"
 ADDITIONAL_CONFIG="${ADDITIONAL_CONFIG%\'}"
@@ -98,9 +86,6 @@ echo "Port:               $PORT"
 echo "Max Sequences:      $MAX_NUM_SEQS"
 echo "Max Model Length:   $MAX_MODEL_LEN"
 echo "Tensor Parallel:    $TENSOR_PARALLEL_SIZE"
-if [ -n "$VLLM_DEVICE" ]; then
-    echo "Device:             $VLLM_DEVICE"
-fi
 echo "Tool Calling:       $ENABLE_TOOL_CALLING"
 if [ "$ENABLE_KV_TRANSFER" = "true" ]; then
     echo "KV Transfer:        role=$KV_ROLE etcd=$ETCD"
@@ -116,11 +101,6 @@ CMD_ARRAY=(
     "--tensor-parallel-size" "$TENSOR_PARALLEL_SIZE"
 )
 
-# Device backend (e.g., neuron)
-if [ -n "$VLLM_DEVICE" ]; then
-    CMD_ARRAY+=("--device" "$VLLM_DEVICE")
-fi
-
 # Tool calling
 if [ "$ENABLE_TOOL_CALLING" = "true" ]; then
     CMD_ARRAY+=("--enable-auto-tool-choice")
@@ -134,11 +114,6 @@ else
     CMD_ARRAY+=("--no-enable-prefix-caching")
 fi
 
-# Speculative max model length (required for disaggregated inference)
-if [ -n "$SPECULATIVE_MAX_MODEL_LEN" ]; then
-    CMD_ARRAY+=("--speculative-max-model-len" "$SPECULATIVE_MAX_MODEL_LEN")
-fi
-
 # KV cache transfer (disaggregated inference)
 if [ "$ENABLE_KV_TRANSFER" = "true" ]; then
     if [ -z "$ETCD" ]; then
@@ -147,11 +122,6 @@ if [ "$ENABLE_KV_TRANSFER" = "true" ]; then
     fi
     KV_CONFIG="{\"kv_connector\":\"$KV_CONNECTOR\",\"kv_role\":\"$KV_ROLE\",\"kv_buffer_size\":$KV_BUFFER_SIZE,\"etcd\":\"$ETCD\"}"
     CMD_ARRAY+=("--kv-transfer-config" "$KV_CONFIG")
-fi
-
-# Neuron config override (pass '{}' for disaggregated inference)
-if [ -n "$OVERRIDE_NEURON_CONFIG" ]; then
-    CMD_ARRAY+=("--override-neuron-config" "$OVERRIDE_NEURON_CONFIG")
 fi
 
 # Additional config (neuron overrides)

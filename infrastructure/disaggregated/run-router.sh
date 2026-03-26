@@ -9,7 +9,7 @@
 
 set -e
 
-DLC_IMAGE="${DLC_IMAGE:-public.ecr.aws/neuron/pytorch-inference-vllm-neuronx:0.13.0-neuronx-py312-sdk2.28.0-ubuntu24.04}"
+DLC_IMAGE="${DLC_IMAGE:-public.ecr.aws/neuron/pytorch-inference-vllm-neuronx:0.7.2-neuronx-py310-sdk2.24.1-ubuntu22.04}"
 ETCD_PORT="${ETCD_PORT:-8989}"
 PROXY_PORT="${PROXY_PORT:-8000}"
 HOST_IP="${HOST_IP:-$(hostname -i | awk '{print $1}')}"
