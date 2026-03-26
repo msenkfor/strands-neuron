@@ -22,7 +22,7 @@ echo "Starting etcd"
 echo "Host IP: ${HOST_IP} | Port: ${ETCD_PORT}"
 echo "=================================="
 
-docker run -d \
+docker run -it \
     --name etcd \
     --shm-size=10g \
     --privileged \
@@ -52,7 +52,7 @@ echo "On each prefill/decode instance, run:"
 echo "  export ETCD=${HOST_IP}:${ETCD_PORT}"
 echo "=================================="
 
-docker run --rm \
+docker run --it \
     --name proxy \
     --shm-size=10g \
     --privileged \
@@ -60,4 +60,4 @@ docker run --rm \
     -e ETCD_IP="${HOST_IP}" \
     -e ETCD_PORT="${ETCD_PORT}" \
     "${DLC_IMAGE}" \
-    bash -c "exec neuron-proxy-server --etcd \$ETCD_IP:\$ETCD_PORT"
+    bash -c "pip install -q quart aiohttp && exec neuron-proxy-server --etcd \$ETCD_IP:\$ETCD_PORT"
