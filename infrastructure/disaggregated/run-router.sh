@@ -44,16 +44,6 @@ echo "Starting neuron-proxy-server"
 echo "Proxy port: ${PROXY_PORT}"
 echo "=================================="
 
-docker run -d \
-    --name proxy \
-    --shm-size=10g \
-    --privileged \
-    -p "${PROXY_PORT}:${PROXY_PORT}" \
-    -e ETCD_IP="${HOST_IP}" \
-    -e ETCD_PORT="${ETCD_PORT}" \
-    "${DLC_IMAGE}" \
-    bash -c "exec neuron-proxy-server --etcd \$ETCD_IP:\$ETCD_PORT"
-
 echo "=================================="
 echo "Proxy endpoint: http://${HOST_IP}:${PROXY_PORT}"
 echo "ETCD endpoint:  ${HOST_IP}:${ETCD_PORT}"
@@ -62,4 +52,12 @@ echo "On each prefill/decode instance, run:"
 echo "  export ETCD=${HOST_IP}:${ETCD_PORT}"
 echo "=================================="
 
-docker ps --filter "name=etcd" --filter "name=proxy" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+docker run --rm \
+    --name proxy \
+    --shm-size=10g \
+    --privileged \
+    -p "${PROXY_PORT}:${PROXY_PORT}" \
+    -e ETCD_IP="${HOST_IP}" \
+    -e ETCD_PORT="${ETCD_PORT}" \
+    "${DLC_IMAGE}" \
+    bash -c "exec neuron-proxy-server --etcd \$ETCD_IP:\$ETCD_PORT"
