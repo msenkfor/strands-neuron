@@ -8,8 +8,8 @@
 
 set -e
 
-DLC_IMAGE="${DLC_IMAGE:-public.ecr.aws/neuron/pytorch-inference-vllm-neuronx:0.7.2-neuronx-py310-sdk2.24.1-ubuntu22.04}"
-CONTAINER_NAME="${CONTAINER_NAME:-vllm-prefill}"
+DLC_IMAGE="${DLC_IMAGE:-public.ecr.aws/neuron/pytorch-inference-vllm-neuronx:0.9.1-neuronx-py311-sdk2.26.1-ubuntu22.04}"
+CONTAINER_NAME="${CONTAINER_NAME:-vllm-prefill-2}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="${CONFIG_FILE:-${SCRIPT_DIR}/../configs/disaggregated-prefill.env}"
 START_SCRIPT="${SCRIPT_DIR}/../start-vllm.sh"
@@ -40,7 +40,14 @@ echo "Port:   ${PORT}"
 echo "ETCD:   ${ETCD}"
 echo "=================================="
 
-docker run --it \
+DEVICE_FLAGS=""
+for i in {0..15}; do
+    if [ -e "/dev/neuron${i}" ]; then
+        DEVICE_FLAGS="${DEVICE_FLAGS} --device=/dev/neuron${i}"
+    fi
+done
+
+docker run --rm -it \
     --name "${CONTAINER_NAME}" \
     --privileged \
     --device /dev/infiniband/uverbs0 \
@@ -49,7 +56,20 @@ docker run --it \
     -e HF_TOKEN="${HF_TOKEN}" \
     --env-file "${CONFIG_FILE}" \
     -e ETCD="${ETCD}" \
+    -e VLLM_NEURON_FRAMEWORK="neuronx-distributed-inference" \
+    -e NEURON_RT_ASYNC_SENDRECV_BOOTSTRAP_PORT="45645" \
+    -e NEURON_RT_ASYNC_SENDRECV_EXPERIMENTAL_ENABLED="1" \
+    -e NEURON_RT_VISIBLE_CORES="0-31" \
     ${NEURON_COMPILED_ARTIFACTS:+-e NEURON_COMPILED_ARTIFACTS="${NEURON_COMPILED_ARTIFACTS}"} \
+    ${DEVICE_FLAGS} \
     -v "${START_SCRIPT}:/app/start-vllm.sh:ro" \
     "${DLC_IMAGE}" \
-    /app/start-vllm.sh
+    bash -c "python -m vllm.entrypoints.openai.api_server \
+    --model \$MODEL \
+    --max-num-seqs \$MAX_NUM_SEQS \
+    --max-model-len \$MAX_MODEL_LEN \
+    --tensor-parallel-size 32 \
+    --no-enable-prefix-caching \
+    --additional-config='{\"override_neuron_config\":{}}' \
+    --kv-transfer-config '{\"kv_connector\":\"NeuronConnector\",\"kv_role\":\"kv_producer\", \"kv_buffer_size\":2e11,\"etcd\":\"\$ETCD\", \"neuron_core_offset\":0, \"kv_buffer_device\":\"cpu\",\"kv_rank\":0}' \
+    --port \$PORT"
