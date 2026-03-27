@@ -8,7 +8,7 @@
 
 set -e
 
-DLC_IMAGE="${DLC_IMAGE:-public.ecr.aws/neuron/pytorch-inference-vllm-neuronx:0.7.2-neuronx-py310-sdk2.24.1-ubuntu22.04}"
+DLC_IMAGE="${DLC_IMAGE:-public.ecr.aws/neuron/pytorch-inference-vllm-neuronx:0.9.1-neuronx-py311-sdk2.26.1-ubuntu22.04}"
 CONTAINER_NAME="${CONTAINER_NAME:-vllm-decode}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="${CONFIG_FILE:-${SCRIPT_DIR}/../configs/disaggregated-decode.env}"
@@ -30,6 +30,13 @@ if [ -z "$HF_TOKEN" ]; then
     echo "Warning: HF_TOKEN not set."
 fi
 
+DEVICE_FLAGS=""
+for i in {0..15}; do
+    if [ -e "/dev/neuron${i}" ]; then
+        DEVICE_FLAGS="${DEVICE_FLAGS} --device=/dev/neuron${i}"
+    fi
+done
+
 docker rm -f "${CONTAINER_NAME}" 2>/dev/null || true
 
 echo "=================================="
@@ -49,7 +56,19 @@ docker run --it \
     -e HF_TOKEN="${HF_TOKEN}" \
     --env-file "${CONFIG_FILE}" \
     -e ETCD="${ETCD}" \
+    -e VLLM_NEURON_FRAMEWORK="neuronx-distributed-inference" \
+    -e NEURON_RT_ASYNC_SENDRECV_BOOTSTRAP_PORT="45645" \
+    -e NEURON_RT_ASYNC_SENDRECV_EXPERIMENTAL_ENABLED="1" \
+    -e NEURON_RT_VISIBLE_CORES="0-31" \
     ${NEURON_COMPILED_ARTIFACTS:+-e NEURON_COMPILED_ARTIFACTS="${NEURON_COMPILED_ARTIFACTS}"} \
     -v "${START_SCRIPT}:/app/start-vllm.sh:ro" \
     "${DLC_IMAGE}" \
-    /app/start-vllm.sh
+    bash -c "python -m vllm.entrypoints.openai.api_server \
+    --model \$MODEL \
+    --max-num-seqs \$MAX_NUM_SEQS \
+    ${DEVICE_FLAGS} \
+    --max-model-len \$MAX_MODEL_LEN \
+    --tensor-parallel-size 32 \
+    --no-enable-prefix-caching \
+    --kv-transfer-config '{\"kv_connector\":\"NeuronConnector\",\"kv_role\":\"kv_consumer\",\"kv_buffer_size\":2e11,\"etcd\":\"\$ETCD\", \"neuron_core_offset\":0, \"kv_buffer_device\":\"cpu\",\"kv_rank\":1}' \
+    --port \$PORT"
