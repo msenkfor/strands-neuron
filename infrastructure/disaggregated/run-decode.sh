@@ -47,7 +47,7 @@ echo "Port:   ${PORT}"
 echo "ETCD:   ${ETCD}"
 echo "=================================="
 
-docker run --it \
+docker run --rm -it \
     --name "${CONTAINER_NAME}" \
     --privileged \
     --device /dev/infiniband/uverbs0 \
